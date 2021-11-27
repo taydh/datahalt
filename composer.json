@@ -1,0 +1,12 @@
+{
+	"autoload": {
+        "psr-4": {
+            "Taydh\\": "lib/Taydh/"
+        }
+    },
+    "require": {
+        "defuse/php-encryption": "^2.3",
+		"sonata-project/google-authenticator": "^2.2",
+		"firebase/php-jwt": "^5.5"
+    }
+}

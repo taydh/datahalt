@@ -1,2 +1,5 @@
 config/
 var/
+public/client_tools/
+vendor/
+test/
