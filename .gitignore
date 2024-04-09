@@ -1,5 +1,8 @@
 config/
 var/
-public/client_tools/
 vendor/
 test/
+public/client_tools/
+public/other/
+.devcontainer
+.github
