@@ -123,7 +123,7 @@ final class RequestHelper {
 		$requestBody = file_get_contents('php://input');
 		$data = json_decode($requestBody);
 		
-		if (!$data) throw new \Exception('Invalid content');
+		if (!$data || !property_exists($data, 'entries')) throw new \Exception('Invalid content');
 		
 		$clientSettings = ConfigurationHelper::readClientSettings($clientId);
 		$queryRunner = new \Taydh\TeleQuery\QueryRunner($clientSettings);

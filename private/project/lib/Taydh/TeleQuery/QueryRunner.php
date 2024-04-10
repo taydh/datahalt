@@ -71,7 +71,7 @@ class QueryRunner
 		return $result;
 	}
 	
-	private function fetchAll($pdo, &$result, $entry, $parentItems, $label, $hasLabel) {
+	private function fetchAll($pdo, &$result, $entry, $parentItems, $hasLabel, $label) {
 		// map must exists
 		$mapTo = $entry->mapTo;
 		$mapKeyCol = $entry->mapKeyCol ?? null;
@@ -97,7 +97,7 @@ class QueryRunner
 				// determine values for parameter in array type
 				if ($isValueObject) {
 					$hasRange = property_exists($param->value, 'range');
-					$paramValues = array_unique(array_column($parentItems, $param->value->column));
+					$paramValues = array_unique(array_column($parentItems, $param->value->field));
 				}
 				else if (is_array($param->value)) {
 					$paramValues = $param->value;
@@ -117,9 +117,10 @@ class QueryRunner
 		$rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
 
 		if ($hasLabel) $this->queryResultPool[$label] = $rows;
+		
 		if (!$mapKeyCol) { // as array
 			// $result['fetch']->$mapTo = $rows;
-			$result->$mapTo = $rows;
+			$result->$mapTo = !property_exists($result, $mapTo) ? $rows : array_merge($result->$mapTo, $rows);
 		}
 		else { // as object
 			$mapItem = new \stdClass();
@@ -141,7 +142,7 @@ class QueryRunner
 	}
 	
 	private function runNextEntries($pdo, &$result, $index, $entry, $parentItems, $parentLabel) {
-		$nextFetchType = $entry->nextFetchType ?? 'once';
+		$fetchType = $entry->fetchType ?? 'once';
 		$hasLabel = property_exists($entry, 'label');
 		$label = $hasLabel ? $entry->label : $parentLabel . '_' . $index;
 		
@@ -151,13 +152,15 @@ class QueryRunner
 		//echo print_r($sql, true) . PHP_EOL;
 		
 		if ($queryType == 'fetch') {
-			if ($nextFetchType == 'once') {
-				self::fetchAll($pdo, $result, $entry, $parentItems, $label, $hasLabel);
+			if ($fetchType == 'once') {
+				self::fetchAll($pdo, $result, $entry, $parentItems, $hasLabel, $label);
 			}
-			else if ($nextFetchType == 'each') {
-				foreach ($parentItems as $idx => $item) {
-					$labelEach = $label . ':' . $idx;
-					self::fetchAll($pdo, $result, $entry, [$item], $labelEach, $hasLabel);
+			else if ($fetchType == 'each') {
+				if (!$parentItems) throw new \Exception('Fetch type each require a parent entry');
+
+				foreach ($parentItems as $parentIndex => $item) {
+					$labelEach = $label . ':' . $parentIndex;
+					self::fetchAll($pdo, $result, $entry, [$item], $hasLabel, $labelEach);
 				}
 			}
 		}
