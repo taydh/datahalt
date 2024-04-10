@@ -61,22 +61,22 @@ class QueryRunner
 
 		$result = new \stdClass();
 
-		self::runFollow($pdo, $result, 0, $entry, null, null);
+		self::runNextEntries($pdo, $result, 0, $entry, null, null);
 		
 		return $result;
 	}
 	
 	private function fetchAll($pdo, &$result, $entry, $parentItems, $label, $hasLabel) {
 		// map must exists
-		$mapTo = $entry->map->to;
-		$mapKeyCol = $entry->map->keyCol ?? null;
+		$mapTo = $entry->mapTo;
+		$mapKeyCol = $entry->mapKeyCol ?? null;
 		
-		$queryText = $entry->query->text;		
+		$queryText = $entry->fetch;		
 		$allParamValues = [];
 		
-		if (property_exists($entry->query, 'params')) {
+		if (property_exists($entry, 'params')) {
 			// convert to question marks statement template
-			foreach ($entry->query->params as $param) {
+			foreach ($entry->params as $param) {
 				$isValueObject = is_object($param->value);
 				$type = $param->value->type ?? 'STR';
 				$validType = in_array($type, ['STR', 'NUM', 'INT', 'BOOL', 'NULL']);
@@ -127,28 +127,29 @@ class QueryRunner
 			}
 		}
 		
-		// run next follow
-		if (property_exists($entry, 'follows')) {
-			foreach ($entry->follows as $nextFollowIndex => $nextFollowEntry) {
-				self::runFollow($pdo, $result, $nextFollowIndex, $nextFollowEntry, $rows, $label);
+		// run next entries
+		if (property_exists($entry, 'next')) {
+			foreach ($entry->next as $nextIndex => $nextEntry) {
+				self::runNextEntries($pdo, $result, $nextIndex, $nextEntry, $rows, $label);
 			}
 		}
 	}
 	
-	private function runFollow($pdo, &$result, $index, $entry, $parentItems, $parentLabel) {
-		$followType = $entry->followType ?? 'once';
+	private function runNextEntries($pdo, &$result, $index, $entry, $parentItems, $parentLabel) {
+		$nextFetchType = $entry->nextFetchType ?? 'once';
 		$hasLabel = property_exists($entry, 'label');
 		$label = $hasLabel ? $entry->label : $parentLabel . '_' . $index;
 		
 		// set default to fetch
-		$queryType = property_exists($entry, 'query') ? ($entry->query->type ?? 'fetch') : null;
+		// $queryType = property_exists($entry, 'query') ? ($entry->query->type ?? 'fetch') : null;
+		$queryType = property_exists($entry, 'fetch') ? 'fetch' : (property_exists($entry, 'exec') ? 'exec' : null );
 		//echo print_r($sql, true) . PHP_EOL;
 		
 		if ($queryType == 'fetch') {
-			if ($followType == 'once') {
+			if ($nextFetchType == 'once') {
 				self::fetchAll($pdo, $result, $entry, $parentItems, $label, $hasLabel);
 			}
-			else if ($followType == 'each') {
+			else if ($nextFetchType == 'each') {
 				foreach ($parentItems as $idx => $item) {
 					$labelEach = $label . ':' . $idx;
 					self::fetchAll($pdo, $result, $entry, [$item], $labelEach, $hasLabel);
@@ -156,6 +157,8 @@ class QueryRunner
 			}
 		}
 		else if($queryType == 'exec') {
+			$mapTo = $entry->mapTo;
+			$sql = $entry->exec;
 			$row = ['affectedRecords' => $pdo->exec($sql)];
 			
 			if (($entry->lastInsertId ?? 0) != 0) {
@@ -167,8 +170,8 @@ class QueryRunner
 			
 			// run next follow
 			if (property_exists($entry, 'follows')) {
-				foreach ($entry->follows as $nextFollowIndex => $nextFollowEntry) {
-					self::runFollow($pdo, $result, $nextFollowIndex, $nextFollowEntry, [$row], $label);
+				foreach ($entry->next as $nextIndex => $nextEntry) {
+					self::runNextEntries($pdo, $result, $nextIndex, $nextEntry, [$row], $label);
 				}
 			}
 		}
