@@ -14,58 +14,69 @@ final class RequestHelper {
 			return self::runRequest('desktop');
 		}
 		else {
-			$authInfo = self::authorizeRequest();
+			$clientId = self::authorizeRequest();
 			
-			if (!$authInfo) return null;
-			else return self::runRequest($authInfo['clientId']);
+			if (!$clientId) return null;
+			else return self::runRequest($clientId);
 		}
 	}
 	
 	public static function authenticate() {
 		$clientId = $_POST['clientId'] ?? null;
 		$otp = $_POST['otp'] ?? null;
-		
-		if (!$clientId || !$otp) return null;
+
+		if (!$clientId) return null;
 		
 		$appSettings = ConfigurationHelper::readAppSettings();
 		$clientSettings = ConfigurationHelper::readClientSettings($clientId);
 		
 		if (!$clientSettings) throw new \Exception('Client settings not found or invalid');
 
-		$g = new \Sonata\GoogleAuthenticator\GoogleAuthenticator();
+		if (!$clientSettings['auth.enabled']) {
+			$g = new \Sonata\GoogleAuthenticator\GoogleAuthenticator();
 		
-		if (!$g->checkCode($clientSettings['auth.otp_key'], $otp)) throw new \Exception('invalid OTP');
-		
-		$defKey = Key::loadFromAsciiSafeString($appSettings['encryption_keys'][0]);
-		$requestSignKey = bin2hex(random_bytes(8));
-		$authTime = time();
-		
-		$authInfo = [
-			'clientId' => $clientId,
-			'requestSignKey' => $requestSignKey,
-			'authTime' => $authTime,
-			'authExpiresIn' => $clientSettings['auth.exp_in'],
-		];
-		
-		return [
-			'authInfoToken' => Crypto::encrypt(serialize($authInfo), $defKey),
-			'authInfoExpiresIn' => $clientSettings['auth.exp_in'],
-			'requestSignKey' => $requestSignKey,
-		];
+			if (!$g->checkCode($clientSettings['auth.otp_key'], $otp)) throw new \Exception('invalid OTP');
+			
+			$defKey = Key::loadFromAsciiSafeString($appSettings['encryption_keys'][0]);
+			$requestSignKey = bin2hex(random_bytes(8));
+			$authTime = time();
+			
+			$authInfo = [
+				'clientId' => $clientId,
+				'requestSignKey' => $requestSignKey,
+				'authTime' => $authTime,
+				'authExpiresIn' => $clientSettings['auth.exp_in'],
+			];
+			
+			return [
+				'authInfoToken' => Crypto::encrypt(serialize($authInfo), $defKey),
+				'authInfoExpiresIn' => $clientSettings['auth.exp_in'],
+				'requestSignKey' => $requestSignKey,
+			];
+		}
 	}
 	
 	private static function authorizeRequest() {
 		$result = false;
-		
+		$level = 1;
+
 		// check Authorization header
 		$headers = apache_request_headers();
+		$bearerToken = '';
 
-		if(isset($headers['Authorization']) && strpos($headers['Authorization'], 'Bearer ') == 0){
-			$jwt = substr($headers['Authorization'], strpos($headers['Authorization'], ' ') + 1);
-			
+		if (isset($headers['Authorization']) && strpos($headers['Authorization'], 'Bearer ') == 0) {
+			$bearerToken = substr($headers['Authorization'], strpos($headers['Authorization'], ' ') + 1);
+		}
+
+		if (!$bearerToken) throw new \Exception('Authorization fail '.$level);
+		++$level;
+
+		if (strpos($bearerToken,'.') > 0 && count($jwtParts = explode('.', $bearerToken, 3)) == 3) {
+			$jwt = $bearerToken;
+
 			// extract encrypted auth info in jwt payload
 			$appSettings = ConfigurationHelper::readAppSettings();
-			$payload = json_decode(base64_decode(explode('.', $jwt)[1]), true);
+			$payload = json_decode(base64_decode($jwtParts[1]), true);
 			$decrypted = null;
 
 			foreach ($appSettings['encryption_keys'] as $asciiKey){
@@ -77,19 +88,32 @@ final class RequestHelper {
 				catch(\Exception $ex){ /* skip */ }
 			}
 			
-			if (!$decrypted) throw new \Exception('Authorization fail 1');
+			if (!$decrypted) throw new \Exception('Authorization fail '. $level);
+			++$level;
 			
 			// unserialize
 			$authInfo = unserialize($decrypted);
 			
-			if (time() > $authInfo['authTime'] + $authInfo['authExpiresIn']) throw new \Exception('Authorization fail 2');
+			if (time() > $authInfo['authTime'] + $authInfo['authExpiresIn']) throw new \Exception('Authorization fail ' . $level);
+			++$level;
 			
 			// verify jwt
 			$decoded = JWT::decode($jwt, new JWTKey($authInfo['requestSignKey'], 'HS256'));
 			
-			if (!$decoded) throw new \Exception('Authorization fail 3');
+			if (!$decoded) throw new \Exception('Authorization fail '.$level);
+			++$level;
 			
-			$result = $authInfo;
+			$result = $authInfo['clientId'];
+		}
+		else {
+			// check if client settings with auth.enabled=0
+			$clientId = $bearerToken;
+			$clientSettings = ConfigurationHelper::readClientSettings($clientId);
+		
+			if (!$clientSettings || $clientSettings['auth.enabled'])  throw new \Exception('Authorization fail '.$level);
+			++$level;
+
+			$result = $clientId;
 		}
 		
 		return $result;
