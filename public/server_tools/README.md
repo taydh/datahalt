@@ -1,0 +1,1 @@
+Server tools help generate keys required to setup app settings and client settings

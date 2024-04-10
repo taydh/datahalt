@@ -7,8 +7,6 @@ use Firebase\JWT\JWT;
 use Firebase\JWT\Key as JWTKey;
 
 final class RequestHelper {
-	const AUTHINFO_EXPIRESIN = 60 * 60;
-	
 	public static function processRequest() {
 		$appSettings = ConfigurationHelper::readAppSettings();
 		
@@ -40,16 +38,18 @@ final class RequestHelper {
 		
 		$defKey = Key::loadFromAsciiSafeString($appSettings['encryption_keys'][0]);
 		$requestSignKey = bin2hex(random_bytes(8));
+		$authTime = time();
 		
 		$authInfo = [
 			'clientId' => $clientId,
 			'requestSignKey' => $requestSignKey,
-			'authTime' => time(),
+			'authTime' => $authTime,
+			'authExpiresIn' => $clientSettings['auth.exp_in'],
 		];
 		
 		return [
 			'authInfoToken' => Crypto::encrypt(serialize($authInfo), $defKey),
-			'authInfoExpiresIn' => self::AUTHINFO_EXPIRESIN,
+			'authInfoExpiresIn' => $clientSettings['auth.exp_in'],
 			'requestSignKey' => $requestSignKey,
 		];
 	}
@@ -67,7 +67,7 @@ final class RequestHelper {
 			$appSettings = ConfigurationHelper::readAppSettings();
 			$payload = json_decode(base64_decode(explode('.', $jwt)[1]), true);
 			$decrypted = null;
-			
+
 			foreach ($appSettings['encryption_keys'] as $asciiKey){
 				try {
 					$defKey = Key::loadFromAsciiSafeString($asciiKey);
@@ -82,7 +82,7 @@ final class RequestHelper {
 			// unserialize
 			$authInfo = unserialize($decrypted);
 			
-			if (time() > $authInfo['authTime'] + self::AUTHINFO_EXPIRESIN) throw new \Exception('Authorization fail 2');
+			if (time() > $authInfo['authTime'] + $authInfo['authExpiresIn']) throw new \Exception('Authorization fail 2');
 			
 			// verify jwt
 			$decoded = JWT::decode($jwt, new JWTKey($authInfo['requestSignKey'], 'HS256'));

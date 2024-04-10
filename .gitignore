@@ -1,8 +1,7 @@
-config/
-var/
-vendor/
+private/config-dev/
+private/data-dev/
+private/project/vendor/
 test/
-public/client_tools/
 public/other/
 .devcontainer
 .github

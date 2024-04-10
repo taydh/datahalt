@@ -30,9 +30,12 @@ class QueryRunner
 	private function createSqliteConnection() {
 	    $filepath = $this->clientSettings['db.path'];
 		
-		$vars = ['projectDir' => $_ENV['project_dir']];
+		$whitelistVars = [
+			'projectDir' => $_ENV['project_dir'],
+			'dataDir' => $_ENV['data_dir'],
+		];
 		
-		foreach ($vars as $var => $val) {
+		foreach ($whitelistVars as $var => $val) {
 			$filepath = str_replace('{'.$var.'}', $val, $filepath);
 		}
 		
