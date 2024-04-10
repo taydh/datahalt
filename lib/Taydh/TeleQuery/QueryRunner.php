@@ -53,9 +53,14 @@ class QueryRunner
 	}
 	
 	private function runMainQuery($pdo, $entry) {
+		/* 20240410 no more separate map container 
 		$result = [
 			'fetch' => new \stdClass(), 
 			'exec' => new \stdClass()];
+		*/
+
+		$result = new \stdClass();
+
 		self::runFollow($pdo, $result, 0, $entry, null, null);
 		
 		return $result;
@@ -97,7 +102,7 @@ class QueryRunner
 				}
 				
 				$marks = str_repeat('?,', count($paramValues) - 1) . '?';
-				$queryText = str_replace(':'.$param->param, $marks, $queryText);
+				$queryText = str_replace(':'.$param->name, $marks, $queryText);
 				$allParamValues = array_merge($allParamValues, $paramValues);
 			}
 		}
@@ -108,11 +113,13 @@ class QueryRunner
 
 		if ($hasLabel) $this->queryResultPool[$label] = $rows;
 		if (!$mapKeyCol) { // as array
-			$result['fetch']->$mapTo = $rows;
+			// $result['fetch']->$mapTo = $rows;
+			$result->$mapTo = $rows;
 		}
 		else { // as object
 			$mapItem = new \stdClass();
-			$result['fetch']->$mapTo = $mapItem;
+			// $result['fetch']->$mapTo = $mapItem;
+			$result->$mapTo = $mapItem;
 
 			foreach ($rows as $row) {
 				$keyValue = $row[$mapKeyCol];
@@ -155,7 +162,8 @@ class QueryRunner
 				$row['lastInsertId'] = $pdo->lastInsertId();
 			}
 			
-			$result['exec']->$mapTo = $row;
+			// $result['exec']->$mapTo = $row;
+			$result->$mapTo = $row;
 			
 			// run next follow
 			if (property_exists($entry, 'follows')) {

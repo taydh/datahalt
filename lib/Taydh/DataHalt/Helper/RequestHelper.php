@@ -30,10 +30,10 @@ final class RequestHelper {
 		if (!$clientId || !$otp) return null;
 		
 		$appSettings = ConfigurationHelper::readAppSettings();
-		$clientSettings = @ConfigurationHelper::readClientSettings($clientId);
+		$clientSettings = ConfigurationHelper::readClientSettings($clientId);
 		
-		if (!$clientSettings) return null;
-		
+		if (!$clientSettings) throw new \Exception('Client settings not found or invalid');
+
 		$g = new \Sonata\GoogleAuthenticator\GoogleAuthenticator();
 		
 		if (!$g->checkCode($clientSettings['auth.otp_key'], $otp)) throw new \Exception('invalid OTP');
