@@ -31,29 +31,28 @@ final class RequestHelper {
 		$clientSettings = ConfigurationHelper::readClientSettings($clientId);
 		
 		if (!$clientSettings) throw new \Exception('Client settings not found or invalid');
+		if (!$clientSettings['auth.enabled']) throw new \Exception('Auth not required');
 
-		if (!$clientSettings['auth.enabled']) {
-			$g = new \Sonata\GoogleAuthenticator\GoogleAuthenticator();
+		$g = new \Sonata\GoogleAuthenticator\GoogleAuthenticator();
+	
+		if (!$g->checkCode($clientSettings['auth.otp_key'], $otp)) throw new \Exception('invalid OTP');
 		
-			if (!$g->checkCode($clientSettings['auth.otp_key'], $otp)) throw new \Exception('invalid OTP');
-			
-			$defKey = Key::loadFromAsciiSafeString($appSettings['encryption_keys'][0]);
-			$requestSignKey = bin2hex(random_bytes(8));
-			$authTime = time();
-			
-			$authInfo = [
-				'clientId' => $clientId,
-				'requestSignKey' => $requestSignKey,
-				'authTime' => $authTime,
-				'authExpiresIn' => $clientSettings['auth.exp_in'],
-			];
-			
-			return [
-				'authInfoToken' => Crypto::encrypt(serialize($authInfo), $defKey),
-				'authInfoExpiresIn' => $clientSettings['auth.exp_in'],
-				'requestSignKey' => $requestSignKey,
-			];
-		}
+		$defKey = Key::loadFromAsciiSafeString($appSettings['encryption_keys'][0]);
+		$requestSignKey = bin2hex(random_bytes(8));
+		$authTime = time();
+		
+		$authInfo = [
+			'clientId' => $clientId,
+			'requestSignKey' => $requestSignKey,
+			'authTime' => $authTime,
+			'authExpiresIn' => $clientSettings['auth.exp_in'],
+		];
+		
+		return [
+			'authInfoToken' => Crypto::encrypt(serialize($authInfo), $defKey),
+			'authInfoExpiresIn' => $clientSettings['auth.exp_in'],
+			'requestSignKey' => $requestSignKey,
+		];
 	}
 	
 	private static function authorizeRequest() {
