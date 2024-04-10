@@ -10,7 +10,7 @@ class QueryRunner
 		$this->clientSettings = $clientSettings;
 	}
 	
-	public function run($mainEntry) {
+	public function run($mainEntries) {
 	    $result = null;
 	    $pdo = null;
 	    
@@ -19,7 +19,7 @@ class QueryRunner
 	        case 'mysql': $pdo = $this->createMysqlConnection(); break;
 	    }
 		
-		if ($pdo) $result = self::runMainQuery($pdo, $mainEntry);
+		if ($pdo) $result = self::runMainQuery($pdo, $mainEntries);
 		else throw new \Exception('Invalid database settings');
 		
 		return $result;
@@ -52,7 +52,7 @@ class QueryRunner
 		return $pdo;
 	}
 	
-	private function runMainQuery($pdo, $entry) {
+	private function runMainQuery($pdo, $entries) {
 		/* 20240410 no more separate map container 
 		$result = [
 			'fetch' => new \stdClass(), 
@@ -61,7 +61,9 @@ class QueryRunner
 
 		$result = new \stdClass();
 
-		self::runNextEntries($pdo, $result, 0, $entry, null, null);
+		foreach ($entries as $entry) {
+			self::runNextEntries($pdo, $result, 0, $entry, null, null);
+		}
 		
 		return $result;
 	}
