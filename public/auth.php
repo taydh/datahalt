@@ -5,9 +5,9 @@ $result = [
 	'status' => 'ok',
 	'data' => null,
 ];
-	
+
 try {
-	$result['data'] = \Taydh\DataHalt\Helper\RequestHelper::authenticate();	
+	$result['data'] = \Taydh\DataHalt\Helper\RequestHelper::authenticate();
 }
 catch(\Exception $exc) {
 	$result['status'] = 'fail';
