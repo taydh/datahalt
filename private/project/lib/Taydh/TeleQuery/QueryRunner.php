@@ -24,6 +24,12 @@ class QueryRunner
 		return is_object($var) ? property_exists($var, $key) : array_key_exists($key, $var);
 	}
 
+	private static function isUpdateOrDeleteQuery($lowercaseSQL)
+	{
+		$lowercaseSQL = trim($lowercaseSQL);
+		return strpos($lowercaseSQL, 'update') === 0 || strpos($lowercaseSQL, 'delete') === 0;
+	}
+
 	private function getEntryQueryType ( $entryOrLabel )
 	{
 		$entry = is_object($entryOrLabel)
@@ -177,16 +183,28 @@ class QueryRunner
 			list($queryText, $allParamValues) = $this->composeParameterValues($queryText, $entry->params);
 		}
 
+		// block update or delete without condition (where)
+		if ($queryText) {
+			$lcQueryText = strtolower($queryText);
+			
+			if (self::isUpdateOrDeleteQuery($lcQueryText)) {
+				if (strpos($lcQueryText, 'where') === false) {
+					$queryText = false;
+					$row = ['error' => 'At least one condition required for update or delete'];
+				}
+			}
+		}
+
 		if ($queryText) {
 			$stm = $this->pdo->prepare($queryText);
 			
 			if ($stm->execute($allParamValues)) {
 				$row = [];
 
-				if (in_array('lastInsertId', $entry->properties ?? [])) {
+				if (in_array('lastInsertId', $entry->props ?? [])) {
 					$row['lastInsertId'] = $this->pdo->lastInsertId();
 				}
-				if (in_array('affectedRows', $entry->properties ?? [])) {
+				if (in_array('affectedRows', $entry->props ?? [])) {
 					$row['affectedRows'] = $stm->rowCount();
 				}
 			}
