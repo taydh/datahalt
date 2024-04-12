@@ -31,7 +31,7 @@ final class RequestHelper {
 		$clientSettings = ConfigurationHelper::readClientSettings($clientId);
 		
 		if (!$clientSettings) throw new \Exception('Client settings not found or invalid');
-		if (!$clientSettings['auth.enabled']) throw new \Exception('Auth not required');
+		if ($clientSettings['auth.disabled'] == 1) throw new \Exception('Auth not required');
 
 		$g = new \Sonata\GoogleAuthenticator\GoogleAuthenticator();
 	
@@ -105,11 +105,11 @@ final class RequestHelper {
 			$result = $authInfo['clientId'];
 		}
 		else {
-			// check if client settings with auth.enabled=0
+			// continue if bearer token is client id, settings exists and auth disabled
 			$clientId = $bearerToken;
 			$clientSettings = ConfigurationHelper::readClientSettings($clientId);
 		
-			if (!$clientSettings || $clientSettings['auth.enabled'])  throw new \Exception('Authorization fail '.$level);
+			if (!$clientSettings || $clientSettings['auth.disabled'] == 0)  throw new \Exception('Authorization fail '.$level);
 			++$level;
 
 			$result = $clientId;
