@@ -111,7 +111,7 @@ class QueryRunner
 	private function runEntry($entry)
 	{
 		$mapTo = $entry->label;
-		$mapKeyCol = $entry->keyColumn ?? null;
+		$mapKeyCol = $entry->assocKey ?? null;
 		$queryType = $this->getEntryQueryType($entry);
 
 		switch ($queryType) {
