@@ -1,28 +1,61 @@
 <?php
 namespace Taydh\TeleQuery;
 
+use stdClass;
+
 class QueryRunner
 {
+	const FETCH_ALL = 1;
+	const FETCH_SINGLE = 2;
+	const EXEC = 3;
+
 	private $clientSettings;
-	private $queryResultPool = [];
+	private $pdo;
+	private $mainEntries;
+	private $result;
 	
-	public function __construct($clientSettings) {
+	public function __construct($clientSettings)
+	{
 		$this->clientSettings = $clientSettings;
 	}
-	
+
+	private static function isKeyExists($var, $key)
+	{
+		return is_object($var) ? property_exists($var, $key) : array_key_exists($key, $var);
+	}
+
+	private function getEntryQueryType ( $entryOrLabel )
+	{
+		$entry = is_object($entryOrLabel)
+			? $entryOrLabel 
+			: current(array_filter($this->mainEntries, fn($e) => $e->label == $entryOrLabel));
+
+		return property_exists($entry, 'fetchAll')
+		? self::FETCH_ALL
+		: (property_exists($entry, 'fetchSingle') 
+			? self::FETCH_SINGLE
+			: (property_exists($entry, 'exec') 
+				? self::EXEC
+				: null ));
+	}
+
 	public function run($mainEntries) {
-	    $result = null;
-	    $pdo = null;
+	    $this->mainEntries = $mainEntries;
 	    
 	    switch($this->clientSettings['db.type']) {
-	        case 'sqlite': $pdo = $this->createSqliteConnection(); break;
-	        case 'mysql': $pdo = $this->createMysqlConnection(); break;
+	        case 'sqlite': $this->pdo = $this->createSqliteConnection(); break;
+	        case 'mysql': $this->pdo = $this->createMysqlConnection(); break;
 	    }
 		
-		if ($pdo) $result = self::runMainQuery($pdo, $mainEntries);
+		if ($this->pdo) $this->runMainQuery();
 		else throw new \Exception('Invalid database settings');
 		
-		return $result;
+		return $this->result;
+	}
+
+	public function validateEntries () 
+	{
+		
 	}
 	
 	/* PRIVATE METHODS */
@@ -55,133 +88,156 @@ class QueryRunner
 		return $pdo;
 	}
 	
-	private function runMainQuery($pdo, $entries) {
+	private function runMainQuery () {
 		/* 20240410 no more separate map container 
 		$result = [
 			'fetch' => new \stdClass(), 
 			'exec' => new \stdClass()];
 		*/
 
-		$result = new \stdClass();
+		$this->result = [];
 
-		foreach ($entries as $entry) {
-			self::runNextEntries($pdo, $result, 0, $entry, null, null);
+		foreach ($this->mainEntries as $entryIdx => $entry) {
+			self::runEntry($entry);
 		}
-		
-		return $result;
 	}
 	
-	private function fetchAll($pdo, &$result, $entry, $parentItems, $hasLabel, $label) {
-		// map must exists
-		$mapTo = $entry->mapTo;
-		$mapKeyCol = $entry->mapKeyCol ?? null;
-		
-		$queryText = $entry->fetch;		
+	private function runEntry($entry)
+	{
+		$mapTo = $entry->label;
+		$mapKeyCol = $entry->keyColumn ?? null;
+		$queryType = $this->getEntryQueryType($entry);
+
+		switch ($queryType) {
+		case self::FETCH_ALL:
+			$items = self::fetchAll($entry);
+			$this->result[$mapTo] = !$mapKeyCol ? $items : array_column($items, null, $mapKeyCol);
+			break;
+		case self::FETCH_SINGLE:
+			$item = self::fetchSingle($entry);
+			$this->result[$mapTo] = $item;
+			break;
+		case self::EXEC:
+			$item = self::exec($entry);
+			$this->result[$mapTo] = $item;
+			break;
+		}
+	}
+
+	private function fetchSingle ( $entry )
+	{
+		// define queryText and allParamValues
+		$queryText = $entry->fetchSingle;
 		$allParamValues = [];
-		
+
+		// replace if params exists
 		if (property_exists($entry, 'params')) {
-			// convert to question marks statement template
-			foreach ($entry->params as $param) {
-				$isValueObject = is_object($param->value);
-				$type = $param->value->type ?? 'STR';
-				$validType = in_array($type, ['STR', 'NUM', 'INT', 'BOOL', 'NULL']);
-				$type = $validType ? $type : 'STR';
-				$pdoParamType = $type == 'INT'
-					? \PDO::PARAM_INT
-					: ($type == 'BOOL'
-						?  \PDO::PARAM_BOOL
-						: ($type == 'NULL'
-							? \PDO::PARAM_NULL
-							: \PDO::PARAM_STR));
-
-				// determine values for parameter in array type
-				if ($isValueObject) {
-					$hasRange = property_exists($param->value, 'range');
-					$paramValues = array_unique(array_column($parentItems, $param->value->field));
-				}
-				else if (is_array($param->value)) {
-					$paramValues = $param->value;
-				}
-				else {
-					$paramValues = [$param->value];
-				}
-				
-				$marks = str_repeat('?,', count($paramValues) - 1) . '?';
-				$queryText = str_replace(':'.$param->name, $marks, $queryText);
-				$allParamValues = array_merge($allParamValues, $paramValues);
-			}
+			list($queryText, $allParamValues) = $this->composeParameterValues($entry->fetch, $entry->params);
 		}
 		
-		$stm = $pdo->prepare($queryText);
-		$stm->execute($allParamValues);
-		$rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
+		if ($queryText) {
+			$stm = $this->pdo->prepare($queryText);
+			$stm->execute($allParamValues);
+			$row = $stm->fetch(\PDO::FETCH_ASSOC);
+		}
 
-		if ($hasLabel) $this->queryResultPool[$label] = $rows;
-		
-		if (!$mapKeyCol) { // as array
-			// $result['fetch']->$mapTo = $rows;
-			$result->$mapTo = !property_exists($result, $mapTo) ? $rows : array_merge($result->$mapTo, $rows);
-		}
-		else { // as object
-			$mapItem = new \stdClass();
-			// $result['fetch']->$mapTo = $mapItem;
-			$result->$mapTo = $mapItem;
-
-			foreach ($rows as $row) {
-				$keyValue = $row[$mapKeyCol];
-				$mapItem->$keyValue = $row;
-			}
-		}
-		
-		// run next entries
-		if (property_exists($entry, 'next')) {
-			foreach ($entry->next as $nextIndex => $nextEntry) {
-				self::runNextEntries($pdo, $result, $nextIndex, $nextEntry, $rows, $label);
-			}
-		}
+		return $row === false ? null : $row;
 	}
-	
-	private function runNextEntries($pdo, &$result, $index, $entry, $parentItems, $parentLabel) {
-		$fetchType = $entry->fetchType ?? 'once';
-		$hasLabel = property_exists($entry, 'label');
-		$label = $hasLabel ? $entry->label : $parentLabel . '_' . $index;
-		
-		// set default to fetch
-		// $queryType = property_exists($entry, 'query') ? ($entry->query->type ?? 'fetch') : null;
-		$queryType = property_exists($entry, 'fetch') ? 'fetch' : (property_exists($entry, 'exec') ? 'exec' : null );
-		//echo print_r($sql, true) . PHP_EOL;
-		
-		if ($queryType == 'fetch') {
-			if ($fetchType == 'once') {
-				self::fetchAll($pdo, $result, $entry, $parentItems, $hasLabel, $label);
-			}
-			else if ($fetchType == 'each') {
-				if (!$parentItems) throw new \Exception('Fetch type each require a parent entry');
 
-				foreach ($parentItems as $parentIndex => $item) {
-					$labelEach = $label . ':' . $parentIndex;
-					self::fetchAll($pdo, $result, $entry, [$item], $hasLabel, $labelEach);
+	private function fetchAll ( $entry )
+	{
+		// define queryText and allParamValues
+		$queryText = $entry->fetchAll;
+		$allParamValues = [];
+		$rows = false;
+
+		// replace if params exists
+		if (property_exists($entry, 'params')) {
+			list($queryText, $allParamValues) = $this->composeParameterValues($queryText, $entry->params);
+		}
+		
+		if ($queryText) {
+			$stm = $this->pdo->prepare($queryText);
+			$stm->execute($allParamValues);
+			$rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
+		}
+
+		return $rows === false ? [] : $rows;
+	}
+
+	private function exec($entry)
+	{
+		// define queryText and allParamValues
+		$queryText = $entry->exec;
+		$allParamValues = [];
+		$row = false;
+
+		// replace if params exists
+		if (property_exists($entry, 'params')) {
+			list($queryText, $allParamValues) = $this->composeParameterValues($queryText, $entry->params);
+		}
+
+		if ($queryText) {
+			$stm = $this->pdo->prepare($queryText);
+			
+			if ($stm->execute($allParamValues)) {
+				$row = [];
+
+				if (in_array('lastInsertId', $entry->properties ?? [])) {
+					$row['lastInsertId'] = $this->pdo->lastInsertId();
+				}
+				if (in_array('affectedRows', $entry->properties ?? [])) {
+					$row['affectedRows'] = $stm->rowCount();
 				}
 			}
 		}
-		else if($queryType == 'exec') {
-			$mapTo = $entry->mapTo;
-			$sql = $entry->exec;
-			$row = ['affectedRecords' => $pdo->exec($sql)];
-			
-			if (($entry->lastInsertId ?? 0) != 0) {
-				$row['lastInsertId'] = $pdo->lastInsertId();
+		
+		return $row === false ? null : $row;
+	}
+
+	private function composeParameterValues ( $queryText, $entryParams )
+	{
+		$allParamValues = [];
+
+		// convert to question marks statement template
+		foreach ($entryParams as $param) {
+			$from = $param->from ?? null;
+			$type = $param->type ?? 'STR';
+			$validType = in_array($type, ['STR', 'NUM', 'INT', 'BOOL', 'NULL']);
+			$type = $validType ? $type : 'STR';
+			$pdoParamType = $type == 'INT'
+				? \PDO::PARAM_INT
+				: ($type == 'BOOL'
+					?  \PDO::PARAM_BOOL
+					: ($type == 'NULL'
+						? \PDO::PARAM_NULL
+						: \PDO::PARAM_STR));
+
+			// determine values for parameter in array type
+			if ($from) {
+				$fromQueryType = $this->getEntryQueryType($from);
+				$referencedItems = in_array($fromQueryType, [self::FETCH_SINGLE, self::EXEC])
+					? ($this->result[$from] != null ? [$this->result[$from]] : [])
+					: $this->result[$from];
+
+				// fail this parameters
+				if (count($referencedItems) == 0) return [false, false];
+
+				$paramValues = array_unique(array_column($referencedItems, $param->field));
+			}
+			else if (is_array($param->value)) {
+				$paramValues = $param->value;
+			}
+			else {
+				$paramValues = [$param->value];
 			}
 			
-			// $result['exec']->$mapTo = $row;
-			$result->$mapTo = $row;
-			
-			// run next follow
-			if (property_exists($entry, 'follows')) {
-				foreach ($entry->next as $nextIndex => $nextEntry) {
-					self::runNextEntries($pdo, $result, $nextIndex, $nextEntry, [$row], $label);
-				}
-			}
+			$marks = str_repeat('?,', count($paramValues) - 1) . '?';
+			$queryText = str_replace(':'.$param->name, $marks, $queryText);
+			$allParamValues = array_merge($allParamValues, $paramValues);
 		}
+
+		//print_r($queryText); print_r($allParamValues);
+		return [$queryText, $allParamValues];
 	}
 }
