@@ -27,7 +27,6 @@ final class RequestHelper {
 
 		if (!$clientId) return null;
 		
-		$appSettings = ConfigurationHelper::readAppSettings();
 		$clientSettings = ConfigurationHelper::readClientSettings($clientId);
 		
 		if (!$clientSettings) throw new \Exception('Client settings not found or invalid');
@@ -37,21 +36,19 @@ final class RequestHelper {
 	
 		if (!$g->checkCode($clientSettings['auth.otp_key'], $otp)) throw new \Exception('invalid OTP');
 		
+		$appSettings = ConfigurationHelper::readAppSettings();
 		$defKey = Key::loadFromAsciiSafeString($appSettings['encryption_keys'][0]);
-		$requestSignKey = bin2hex(random_bytes(8));
 		$authTime = time();
 		
 		$authInfo = [
 			'clientId' => $clientId,
-			'requestSignKey' => $requestSignKey,
 			'authTime' => $authTime,
-			'authExpiresIn' => $clientSettings['auth.exp_in'],
+			'authExpiresIn' => $_ENV['mode_debug'] ? 60*60 : $clientSettings['auth.exp_in'],
 		];
 		
 		return [
-			'authInfoToken' => Crypto::encrypt(serialize($authInfo), $defKey),
-			'authInfoExpiresIn' => $clientSettings['auth.exp_in'],
-			'requestSignKey' => $requestSignKey,
+			'authToken' => 'DATAHALT.' . Crypto::encrypt(serialize($authInfo), $defKey),
+			'expiresIn' => $clientSettings['auth.exp_in'],
 		];
 	}
 	
@@ -70,18 +67,15 @@ final class RequestHelper {
 		if (!$bearerToken) throw new \Exception('Authorization fail '.$level);
 		++$level;
 
-		if (strpos($bearerToken,'.') > 0 && count($jwtParts = explode('.', $bearerToken, 3)) == 3) {
-			$jwt = $bearerToken;
-
-			// extract encrypted auth info in jwt payload
-			$appSettings = ConfigurationHelper::readAppSettings();
-			$payload = json_decode(base64_decode($jwtParts[1]), true);
+		if (strpos($bearerToken,'.') > 0 && count($authTokenParts = explode('.', $bearerToken, 2)) == 2 && $authTokenParts[0] == 'DATAHALT') {
+			$authToken = $authTokenParts[1];
 			$decrypted = null;
+			$appSettings = ConfigurationHelper::readAppSettings();
 
 			foreach ($appSettings['encryption_keys'] as $asciiKey){
 				try {
 					$defKey = Key::loadFromAsciiSafeString($asciiKey);
-					$decrypted = Crypto::decrypt($payload['authInfoToken'], $defKey);
+					$decrypted = Crypto::decrypt($authToken, $defKey);
 					break;
 				}
 				catch(\Exception $ex){ /* skip */ }
@@ -94,12 +88,6 @@ final class RequestHelper {
 			$authInfo = unserialize($decrypted);
 			
 			if (time() > $authInfo['authTime'] + $authInfo['authExpiresIn']) throw new \Exception('Authorization fail ' . $level);
-			++$level;
-			
-			// verify jwt
-			$decoded = JWT::decode($jwt, new JWTKey($authInfo['requestSignKey'], 'HS256'));
-			
-			if (!$decoded) throw new \Exception('Authorization fail '.$level);
 			++$level;
 			
 			$result = $authInfo['clientId'];

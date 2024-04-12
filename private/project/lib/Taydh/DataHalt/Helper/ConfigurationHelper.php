@@ -7,6 +7,6 @@ final class ConfigurationHelper {
 	}
 	
 	public static function readClientSettings($clientId) {
-		return parse_ini_file("{$_ENV['config_dir']}/clients/{$clientId}.ini");
+		return @parse_ini_file("{$_ENV['config_dir']}/clients/{$clientId}.ini");
 	}
 }
