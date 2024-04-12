@@ -138,7 +138,7 @@ class QueryRunner
 
 		// replace if params exists
 		if (property_exists($entry, 'params')) {
-			list($queryText, $allParamValues) = $this->composeParameterValues($entry->fetch, $entry->params);
+			list($queryText, $allParamValues) = $this->composeParameterValues($queryText, $entry->params);
 		}
 		
 		if ($queryText) {
