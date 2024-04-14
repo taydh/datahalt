@@ -53,8 +53,42 @@ class QueryRunner
 	        case 'mysql': $this->pdo = $this->createMysqlConnection(); break;
 	    }
 		
-		if ($this->pdo) $this->runMainQuery();
-		else throw new \Exception('Invalid database settings');
+		if (!$this->pdo) {
+			throw new \Exception('Invalid database settings');
+		}
+		else {
+			$this->runMainQuery();
+
+			// remove fields from result by blockFields parameter
+			foreach ($this->mainEntries as $entry) {
+				if (!property_exists($entry, 'blockFields')) continue;
+
+				$queryType = $this->getEntryQueryType($entry);
+
+				switch ($queryType) {
+					case self::FETCH_ALL:
+						foreach ($this->result[$entry->label] as &$r) {
+							foreach ($entry->blockFields as $field) {
+								if (array_key_exists($field, $r)) {
+									unset($r[$field]);
+								}
+							}
+						}
+						break;
+					case self::FETCH_ONE:
+						$r = &$this->result[$entry->label];
+
+						if ($r) {
+							foreach ($entry->blockFields as $field) {
+								if (array_key_exists($field, $r)) {
+									unset($r[$field]);
+								}
+							}
+						}
+						break;
+				}
+			}
+		}
 		
 		return $this->result;
 	}
