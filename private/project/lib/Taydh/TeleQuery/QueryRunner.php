@@ -6,7 +6,7 @@ use stdClass;
 class QueryRunner
 {
 	const FETCH_ALL = 1;
-	const FETCH_SINGLE = 2;
+	const FETCH_ONE = 2;
 	const EXEC = 3;
 
 	private $clientSettings;
@@ -38,8 +38,8 @@ class QueryRunner
 
 		return property_exists($entry, 'fetchAll')
 		? self::FETCH_ALL
-		: (property_exists($entry, 'fetchSingle') 
-			? self::FETCH_SINGLE
+		: (property_exists($entry, 'fetchOne') 
+			? self::FETCH_ONE
 			: (property_exists($entry, 'exec') 
 				? self::EXEC
 				: null ));
@@ -119,8 +119,8 @@ class QueryRunner
 			$items = self::fetchAll($entry);
 			$this->result[$mapTo] = !$mapKeyCol ? $items : array_column($items, null, $mapKeyCol);
 			break;
-		case self::FETCH_SINGLE:
-			$item = self::fetchSingle($entry);
+		case self::FETCH_ONE:
+			$item = self::fetchOne($entry);
 			$this->result[$mapTo] = $item;
 			break;
 		case self::EXEC:
@@ -130,10 +130,10 @@ class QueryRunner
 		}
 	}
 
-	private function fetchSingle ( $entry )
+	private function fetchOne ( $entry )
 	{
 		// define queryText and allParamValues
-		$queryText = $entry->fetchSingle;
+		$queryText = $entry->fetchOne;
 		$allParamValues = [];
 
 		// replace if params exists
@@ -234,7 +234,7 @@ class QueryRunner
 			// determine values for parameter in array type
 			if ($from) {
 				$fromQueryType = $this->getEntryQueryType($from);
-				$referencedItems = in_array($fromQueryType, [self::FETCH_SINGLE, self::EXEC])
+				$referencedItems = in_array($fromQueryType, [self::FETCH_ONE, self::EXEC])
 					? ($this->result[$from] != null ? [$this->result[$from]] : [])
 					: $this->result[$from];
 
