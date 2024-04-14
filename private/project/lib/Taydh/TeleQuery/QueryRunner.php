@@ -129,11 +129,11 @@ class QueryRunner
 		return $pdo;
 	}
 	
-	private function createMysqlConnection() {
-	    $host = $this->clientSettings['host'];
-		$port = $this->clientSettings['port'] ?? null;
+	private function createMysqlConnection( $settings ) {
+	    $host = $settings['host'];
+		$port = $settings['port'] ?? null;
 		$dsn = 'mysql:host='.$host.';' . ($port ? 'port='.$port.';' : '' );
-		$pdo = new \PDO($dsn, $this->clientSettings['username'], $this->clientSettings['password']);
+		$pdo = new \PDO($dsn, $settings['username'], $settings['password']);
 		$pdo->setAttribute( \PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION );
 		
 		return $pdo;
