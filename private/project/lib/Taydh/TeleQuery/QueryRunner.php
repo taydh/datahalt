@@ -10,8 +10,10 @@ class QueryRunner
 	const EXEC = 3;
 
 	private $clientSettings;
-	private $pdo;
 	private $mainEntries;
+	private $connPool;
+	private $activeConn;
+	private $paused;
 	private $result;
 	
 	public function __construct($clientSettings)
@@ -34,7 +36,7 @@ class QueryRunner
 	{
 		$entry = is_object($entryOrLabel)
 			? $entryOrLabel 
-			: current(array_filter($this->mainEntries, fn($e) => $e->label == $entryOrLabel));
+			: current(array_filter($this->mainEntries, fn($e) => ($e->id ?? $e->label ?? null) == $entryOrLabel));
 
 		return property_exists($entry, 'fetchAll')
 		? self::FETCH_ALL
@@ -47,46 +49,39 @@ class QueryRunner
 
 	public function run($mainEntries) {
 	    $this->mainEntries = $mainEntries;
-	    
-	    switch($this->clientSettings['db.type']) {
-	        case 'sqlite': $this->pdo = $this->createSqliteConnection(); break;
-	        case 'mysql': $this->pdo = $this->createMysqlConnection(); break;
-	    }
-		
-		if (!$this->pdo) {
-			throw new \Exception('Invalid database settings');
-		}
-		else {
-			$this->runMainQuery();
+		$this->connPool = [];
+		$this->activeConn = null;
+		$this->paused = false;
+		$this->result = [];
+		$this->runMainQuery();
 
-			// remove fields from result by blockFields parameter
-			foreach ($this->mainEntries as $entry) {
-				if (!property_exists($entry, 'blockFields')) continue;
+		// remove fields from result by blockFields parameter
+		foreach ($this->mainEntries as $entry) {
+			if (!property_exists($entry, 'blockFields')) continue;
 
-				$queryType = $this->getEntryQueryType($entry);
+			$queryType = $this->getEntryQueryType($entry);
 
-				switch ($queryType) {
-					case self::FETCH_ALL:
-						foreach ($this->result[$entry->label] as &$r) {
-							foreach ($entry->blockFields as $field) {
-								if (array_key_exists($field, $r)) {
-									unset($r[$field]);
-								}
+			switch ($queryType) {
+				case self::FETCH_ALL:
+					foreach ($this->result[$entry->id ?? $entry->label] as &$r) {
+						foreach ($entry->blockFields as $field) {
+							if (array_key_exists($field, $r)) {
+								unset($r[$field]);
 							}
 						}
-						break;
-					case self::FETCH_ONE:
-						$r = &$this->result[$entry->label];
+					}
+					break;
+				case self::FETCH_ONE:
+					$r = &$this->result[$entry->id ??$entry->label];
 
-						if ($r) {
-							foreach ($entry->blockFields as $field) {
-								if (array_key_exists($field, $r)) {
-									unset($r[$field]);
-								}
+					if ($r) {
+						foreach ($entry->blockFields as $field) {
+							if (array_key_exists($field, $r)) {
+								unset($r[$field]);
 							}
 						}
-						break;
-				}
+					}
+					break;
 			}
 		}
 		
@@ -99,9 +94,25 @@ class QueryRunner
 	}
 	
 	/* PRIVATE METHODS */
-	
-	private function createSqliteConnection() {
-	    $filepath = $this->clientSettings['db.path'];
+
+	private function findConnectionSettings ( $connName)
+	{
+		foreach ($this->clientSettings as $key => $value) {
+			if (is_array($value) && substr_count($key, ':') == 1)
+			{
+				$parts = explode(':', $key);
+
+				if ($parts[0] == 'conn' && $parts[1] == $connName )
+				{
+					return $value;
+				}
+			}
+		}
+	}
+
+	private function createSqliteConnection ( $settings )
+	{
+	    $filepath = $settings['path'];
 		
 		$whitelistVars = [
 			'projectDir' => $_ENV['project_dir'],
@@ -129,22 +140,48 @@ class QueryRunner
 	}
 	
 	private function runMainQuery () {
-		/* 20240410 no more separate map container 
-		$result = [
-			'fetch' => new \stdClass(), 
-			'exec' => new \stdClass()];
-		*/
-
-		$this->result = [];
+		$skipCount = 0;
 
 		foreach ($this->mainEntries as $entryIdx => $entry) {
+			if (property_exists($entry, '_skip_')) {
+				$skipCount = $entry->_skip_;
+			}
+
+			if ($skipCount-- > 0) continue;
+
+			// determine if entry and after is paused
+			if (property_exists($entry, '_pause_')) {
+				$this->paused = $entry->_pause_;
+			}
+
+			if ($this->paused) continue;
+
+			// determine which connection to use and after
+			if (property_exists($entry, '_connect_')) {
+				$settings = $this->findConnectionSettings($entry->_connect_);
+				$conn = null;
+				
+				switch ($settings['type']) {
+					case 'sqlite':
+						$conn = $this->createSqliteConnection($settings);
+						break;
+					case 'mysql':
+						$conn = $this->createMysqlConnection($settings);
+						break;
+				}
+
+				$this->connPool[$entry->_connect_] = $this->activeConn = $conn;
+			}
+
 			self::runEntry($entry);
 		}
 	}
 	
 	private function runEntry($entry)
 	{
-		$mapTo = $entry->label;
+		if (!property_exists($entry, 'id') && !property_exists($entry, 'label')) return;
+
+		$mapTo = $entry->id ?? $entry->label;
 		$mapKeyCol = $entry->assocKey ?? null;
 		$queryType = $this->getEntryQueryType($entry);
 
@@ -176,7 +213,7 @@ class QueryRunner
 		}
 		
 		if ($queryText) {
-			$stm = $this->pdo->prepare($queryText);
+			$stm = $this->activeConn->prepare($queryText);
 			$stm->execute($allParamValues);
 			$row = $stm->fetch(\PDO::FETCH_ASSOC);
 		}
@@ -197,7 +234,7 @@ class QueryRunner
 		}
 		
 		if ($queryText) {
-			$stm = $this->pdo->prepare($queryText);
+			$stm = $this->activeConn->prepare($queryText);
 			$stm->execute($allParamValues);
 			$rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
 		}
@@ -230,13 +267,13 @@ class QueryRunner
 		}
 
 		if ($queryText) {
-			$stm = $this->pdo->prepare($queryText);
+			$stm = $this->activeConn->prepare($queryText);
 			
 			if ($stm->execute($allParamValues)) {
 				$row = [];
 
 				if (in_array('lastInsertId', $entry->props ?? [])) {
-					$row['lastInsertId'] = $this->pdo->lastInsertId();
+					$row['lastInsertId'] = $this->activeConn->lastInsertId();
 				}
 				if (in_array('affectedRows', $entry->props ?? [])) {
 					$row['affectedRows'] = $stm->rowCount();
