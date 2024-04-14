@@ -130,10 +130,10 @@ class QueryRunner
 	}
 	
 	private function createMysqlConnection() {
-	    $host = $this->clientSettings['db.host'];
-		$port = $this->clientSettings['db.port'] ?? null;
+	    $host = $this->clientSettings['host'];
+		$port = $this->clientSettings['port'] ?? null;
 		$dsn = 'mysql:host='.$host.';' . ($port ? 'port='.$port.';' : '' );
-		$pdo = new \PDO($dsn, $this->clientSettings['db.username'], $this->clientSettings['db.password']);
+		$pdo = new \PDO($dsn, $this->clientSettings['username'], $this->clientSettings['password']);
 		$pdo->setAttribute( \PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION );
 		
 		return $pdo;
