@@ -10,7 +10,7 @@ Personal case: a poor-man system using cheap shared hosting, without remote data
 
 Work in progress. Current committed features:
 
-There is Authorization mechanism
+Yes, there is Authorization mechanism
 - File based server configuration for the clients
 - Using TOTP (share symmetric key and exchanged to an Authotization bearer token)
 - Optionally, without any token to validate for network isolated server to safe a few millisecond
@@ -20,7 +20,7 @@ Big picture for the 'query'
 - Parameters can reference result from previously run entries
 - Each entriy can choose which connector to use
 
-Installation
+Installation is 'easy'
 
 - Drop-in files in zip format
 - Settings in one PHP file
