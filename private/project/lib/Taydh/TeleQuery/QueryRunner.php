@@ -171,22 +171,35 @@ class QueryRunner
 
 			// determine which connection to use and after
 			if (property_exists($entry, '_connect_')) {
-				$settings = $this->findConnectionSettings($entry->_connect_);
-				$conn = null;
-				
-				switch ($settings['type']) {
-					case 'sqlite':
-						$conn = $this->createSqliteConnection($settings);
-						break;
-					case 'mysql':
-						$conn = $this->createMysqlConnection($settings);
-						break;
-					case 'fs':
-						$conn = new FileSystemConnector($settings['base_dir']);
-						break;
+				if (array_key_exists($entry->_connect_, $this->connPool)) {
+					$this->activeConn = $this->connPool[$entry->_connect_];
 				}
+				else {
+					$settings = $this->findConnectionSettings($entry->_connect_);
+					$conn = null;
+					
+					switch ($settings['type']) {
+						case 'sqlite':
+							$conn = $this->createSqliteConnection($settings);
+							break;
+						case 'mysql':
+							$conn = $this->createMysqlConnection($settings);
+							break;
+						case 'fs':
+							$conn = new FileSystemConnector($settings['base_dir']);
+							break;
+						case 'dhconnect':
+							$conn = new DatahaltConnector([
+								'clientId' => $settings['client_id'],
+								'baseUrl' => $settings['base_url'],
+								'otpKey' => $settings['otp_key'],
+								'connect' => $settings['connect'],
+							]);
+							break;
+					}
 
-				$this->connPool[$entry->_connect_] = $this->activeConn = $conn;
+					$this->connPool[$entry->_connect_] = $this->activeConn = $conn;
+				}
 			}
 
 			self::runEntry($entry);
@@ -197,29 +210,34 @@ class QueryRunner
 	{
 		if (!property_exists($entry, 'id') && !property_exists($entry, 'label')) return;
 
+		$isDatahaltActiveConn = get_class($this->activeConn) == \Taydh\TeleQuery\DatahaltConnector::class;
 		$mapTo = $entry->id ?? $entry->label;
 		$mapKeyCol = $entry->assocKey ?? null;
 		$queryType = $this->getEntryQueryType($entry);
 
 		switch ($queryType) {
 		case self::FETCH_ALL:
-			$items = self::fetchAll($entry);
+			$items = !$isDatahaltActiveConn ? self::fetchAll($entry) : $this->activeConn->query($entry);
 			$this->result[$mapTo] = !$mapKeyCol ? $items : array_column($items, null, $mapKeyCol);
 			break;
 		case self::FETCH_ONE:
-			$item = self::fetchOne($entry);
+			$item = !$isDatahaltActiveConn ? self::fetchOne($entry) : $this->activeConn->query($entry);
 			$this->result[$mapTo] = $item;
 			break;
 		case self::EXEC:
-			$item = self::exec($entry);
+			$item = !$isDatahaltActiveConn ? self::exec($entry) : $this->activeConn->query($entry);
 			$this->result[$mapTo] = $item;
 			break;
 		case self::READ_FILE:
-			$item = $this->activeConn->readFile($entry->readFile, $entry->props ?? []);
+			$item = !$isDatahaltActiveConn 
+				? $this->activeConn->readFile($entry->readFile, $entry->props ?? [])
+				: $this->activeConn->query($entry);
 			$this->result[$mapTo] = $item === false ? null : $item;
 			break;
 		case self::READ_DIR:
-			$item = $this->activeConn->readDir($entry->readDir, $entry->props ?? []);
+			$item = !$isDatahaltActiveConn 
+				? $this->activeConn->readDir($entry->readDir, $entry->props ?? [])
+				: $this->activeConn->query($entry);
 			$this->result[$mapTo] = $item;
 			break;
 		}
