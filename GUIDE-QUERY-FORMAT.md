@@ -1,0 +1,3 @@
+# QUERY FORMAT GUIDE
+
+TBD.
