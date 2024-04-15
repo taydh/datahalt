@@ -8,6 +8,8 @@ class QueryRunner
 	const FETCH_ALL = 1;
 	const FETCH_ONE = 2;
 	const EXEC = 3;
+	const READ_FILE = 21;
+	const READ_DIR = 22;
 
 	private $clientSettings;
 	private $mainEntries;
@@ -38,13 +40,24 @@ class QueryRunner
 			? $entryOrLabel 
 			: current(array_filter($this->mainEntries, fn($e) => ($e->id ?? $e->label ?? null) == $entryOrLabel));
 
-		return property_exists($entry, 'fetchAll')
-		? self::FETCH_ALL
-		: (property_exists($entry, 'fetchOne') 
-			? self::FETCH_ONE
-			: (property_exists($entry, 'exec') 
-				? self::EXEC
-				: null ));
+		$types = [
+			'fetchAll' => self::FETCH_ALL,
+			'fetchOne' => self::FETCH_ONE,
+			'exec' => self::EXEC,
+			'readFile' => self::READ_FILE,
+			'readDir' => self::READ_DIR,
+		];
+
+		$result = null;
+
+		foreach ($types as $key => $type) {
+			if (property_exists($entry, $key)) {
+				$result = $type;
+				break;
+			}
+		}
+
+		return $result;
 	}
 
 	public function run($mainEntries) {
@@ -168,6 +181,9 @@ class QueryRunner
 					case 'mysql':
 						$conn = $this->createMysqlConnection($settings);
 						break;
+					case 'fs':
+						$conn = new FileSystemConnector($settings['base_dir']);
+						break;
 				}
 
 				$this->connPool[$entry->_connect_] = $this->activeConn = $conn;
@@ -196,6 +212,14 @@ class QueryRunner
 			break;
 		case self::EXEC:
 			$item = self::exec($entry);
+			$this->result[$mapTo] = $item;
+			break;
+		case self::READ_FILE:
+			$item = $this->activeConn->readFile($entry->readFile, $entry->props ?? []);
+			$this->result[$mapTo] = $item === false ? null : $item;
+			break;
+		case self::READ_DIR:
+			$item = $this->activeConn->readDir($entry->readDir, $entry->props ?? []);
 			$this->result[$mapTo] = $item;
 			break;
 		}
