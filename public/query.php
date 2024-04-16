@@ -1,5 +1,5 @@
 <?php
-include '_inc.header.php';
+include 'inc.header.php';
 
 $result = [
 	'status' => 'ok',

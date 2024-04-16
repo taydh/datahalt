@@ -1,6 +1,6 @@
 private/config-dev/
 private/data-dev/
-private/project/vendor/
+project/vendor/
 test/
 public/other/
 .devcontainer
