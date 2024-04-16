@@ -3,5 +3,8 @@ private/data-dev/
 project/vendor/
 test/
 public/other/
+project.zip
+public.zip
+private.zip
 .devcontainer
 .github
