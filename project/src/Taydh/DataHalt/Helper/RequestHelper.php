@@ -114,23 +114,7 @@ final class RequestHelper {
 		
 		$clientSettings = ConfigurationHelper::readClientSettings($clientId);
 		$queryRunner = new \Taydh\TeleQuery\QueryRunner($clientSettings);
-		
-		/* no more batch, main query is in array form
-		if (is_array($data) || property_exists($data, 'batch')) {
-			$result = [];
-			$mainEntries = is_array($data) ? $data : $data->batch;
-			
-			foreach ($mainEntries as $mainEntry) {
-				$result[] = $queryRunner->run($mainEntry);
-			}
-			
-			return $result;
-		}
-		else {
-			return $queryRunner->run($data);
-		}
-		*/
 
-		return $queryRunner->run($data->entries);
+		return $queryRunner->run($data);
 	}
 }

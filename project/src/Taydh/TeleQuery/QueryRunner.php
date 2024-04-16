@@ -12,11 +12,14 @@ class QueryRunner
 	const READ_DIR = 22;
 
 	private $clientSettings;
-	private $mainEntries;
 	private $connPool;
 	private $activeConn;
 	private $paused;
 	private $result;
+
+	private $variables;
+	private $forerunner;
+	private $mainEntries;
 	
 	public function __construct($clientSettings)
 	{
@@ -60,13 +63,20 @@ class QueryRunner
 		return $result;
 	}
 
-	public function run($mainEntries) {
-	    $this->mainEntries = $mainEntries;
+	public function run($query) {
+		$this->variables = $query->variables ?? [];
+		$this->forerunner = $query->forerunner ?? [];
+	    $this->mainEntries = $query->entries;
 		$this->connPool = [];
 		$this->activeConn = null;
 		$this->paused = false;
 		$this->result = [];
 		$this->runMainQuery();
+
+		// copy forerunner labels to result
+		foreach ($this->forerunner as $frLabel => $frResult) {
+			$result[$frLabel] = $frResult;
+		}
 
 		// remove fields from result by blockFields parameter
 		foreach ($this->mainEntries as $entry) {
@@ -96,6 +106,11 @@ class QueryRunner
 					}
 					break;
 			}
+		}
+
+		// remove forerunner labels from result
+		foreach (array_keys($this->forerunner) as $frLabel) {
+			unset($result[$frLabel]);
 		}
 		
 		return $this->result;
@@ -332,7 +347,6 @@ class QueryRunner
 
 		// convert to question marks statement template
 		foreach ($entryParams as $param) {
-			$from = $param->from ?? null;
 			$type = $param->type ?? 'STR';
 			$validType = in_array($type, ['STR', 'NUM', 'INT', 'BOOL', 'NULL']);
 			$type = $validType ? $type : 'STR';
@@ -343,6 +357,9 @@ class QueryRunner
 					: ($type == 'NULL'
 						? \PDO::PARAM_NULL
 						: \PDO::PARAM_STR));
+
+			$from = $param->from ?? null;
+			$var = $param->var ?? null;
 
 			// determine values for parameter in array type
 			if ($from) {
@@ -356,11 +373,17 @@ class QueryRunner
 
 				$paramValues = array_unique(array_column($referencedItems, $param->field));
 			}
-			else if (is_array($param->value)) {
-				$paramValues = $param->value;
+			else if ($var) {
+				if (property_exists($this->variables, $var)) {
+					$variable = $this->variables->$var;
+					$paramValues = is_array($variable) ? $variable : [$variable];
+				}
+				else { // fail this parameters
+					return [false, false];
+				}
 			}
-			else {
-				$paramValues = [$param->value];
+			else if (property_exists($param, 'value')) {
+				$paramValues = is_array($param->value) ? $param->value : [$param->value];
 			}
 			
 			$marks = str_repeat('?,', count($paramValues) - 1) . '?';
