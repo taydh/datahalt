@@ -11,6 +11,9 @@ class QueryRunner
 	const READ_FILE = 21;
 	const READ_DIR = 22;
 
+	const SINGLE = 1;
+	const MULTIPLE = 2;
+
 	private $clientSettings;
 	private $connPool;
 	private $activeConn;
@@ -31,10 +34,51 @@ class QueryRunner
 		return is_object($var) ? property_exists($var, $key) : array_key_exists($key, $var);
 	}
 
+	private static function resolveString ( $input )
+	{
+		if (is_string($input)) {
+			return $input;
+		}
+		else if (is_array($input)) {
+			return implode('', $input);
+		}
+
+		return '';
+	}
+
 	private static function isUpdateOrDeleteQuery($lowercaseSQL)
 	{
 		$lowercaseSQL = trim($lowercaseSQL);
 		return strpos($lowercaseSQL, 'update') === 0 || strpos($lowercaseSQL, 'delete') === 0;
+	}
+
+	private function getEntryDataDimension ( $entryOrLabel )
+	{
+		$entry = is_object($entryOrLabel)
+			? $entryOrLabel 
+			: current(array_filter($this->mainEntries, fn($e) => ($e->id ?? $e->label ?? null) == $entryOrLabel));
+		
+		if (!$entry) {
+			$entry = is_object($entryOrLabel)
+				? $entryOrLabel 
+				: current(array_filter($this->forerunner, fn($e) => ($e->id ?? $e->label ?? null) == $entryOrLabel));		
+		}
+
+		$single = false;
+		$propExists = property_exists($entry, 'single');
+
+		if ($propExists) {
+			$single = $entry->single ?? false;
+		}
+		else {
+			$queryType = $this->getEntryQueryType( $entry );
+
+			if ($queryType == self::FETCH_ONE || $queryType == self::EXEC) {
+				$single = true;
+			}
+		}
+
+		return $single ? self::SINGLE : self::MULTIPLE;
 	}
 
 	private function getEntryQueryType ( $entryOrLabel )
@@ -71,12 +115,14 @@ class QueryRunner
 		$this->activeConn = null;
 		$this->paused = false;
 		$this->result = [];
-		$this->runMainQuery();
 
 		// copy forerunner labels to result
-		foreach ($this->forerunner as $frLabel => $frResult) {
-			$result[$frLabel] = $frResult;
+		foreach ($this->forerunner as $entry) {
+			$this->result[$entry->label] = $entry->data;
 		}
+
+		// RUN MAIN QUERY
+		$this->runMainQuery();
 
 		// remove fields from result by blockFields parameter
 		foreach ($this->mainEntries as $entry) {
@@ -109,8 +155,8 @@ class QueryRunner
 		}
 
 		// remove forerunner labels from result
-		foreach (array_keys($this->forerunner) as $frLabel) {
-			unset($result[$frLabel]);
+		foreach ($this->forerunner as $entry) {
+			unset($this->result[$entry->label]);
 		}
 		
 		return $this->result;
@@ -261,7 +307,7 @@ class QueryRunner
 	private function fetchOne ( $entry )
 	{
 		// define queryText and allParamValues
-		$queryText = $entry->fetchOne;
+		$queryText = $this->resolveString($entry->fetchOne);
 		$allParamValues = [];
 
 		// replace if params exists
@@ -281,7 +327,7 @@ class QueryRunner
 	private function fetchAll ( $entry )
 	{
 		// define queryText and allParamValues
-		$queryText = $entry->fetchAll;
+		$queryText = $this->resolveString($entry->fetchAll);
 		$allParamValues = [];
 		$rows = false;
 
@@ -302,7 +348,7 @@ class QueryRunner
 	private function exec($entry)
 	{
 		// define queryText and allParamValues
-		$queryText = $entry->exec;
+		$queryText = $this->resolveString($entry->exec);
 		$allParamValues = [];
 		$row = false;
 
@@ -363,8 +409,8 @@ class QueryRunner
 
 			// determine values for parameter in array type
 			if ($from) {
-				$fromQueryType = $this->getEntryQueryType($from);
-				$referencedItems = in_array($fromQueryType, [self::FETCH_ONE, self::EXEC])
+				$fromDimensionType = $this->getEntryDataDimension($from);
+				$referencedItems = $fromDimensionType == self::SINGLE
 					? ($this->result[$from] != null ? [$this->result[$from]] : [])
 					: $this->result[$from];
 
