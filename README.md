@@ -1,5 +1,5 @@
 # Datahalt
-> A general purpose remote data service
+> JSON remote data service
 
 ## Applicability
 A web based service for client applications to access with regular web request and JSON format (REST).
