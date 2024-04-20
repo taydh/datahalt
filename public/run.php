@@ -1,9 +1,9 @@
 <?php
 include 'inc.header.php';
 
-$backendId = $_GET['id'];
-$group = $_GET['group'];
-$action = $_GET['action'];
+$backendId = $_GET['_be_id'];
+$group = $_GET['_be_group'];
+$action = $_GET['_be_action'];
 $params = $_POST;
 $result = [];
 

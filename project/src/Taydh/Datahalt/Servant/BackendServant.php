@@ -24,7 +24,7 @@ class BackendServant
 	
 	private function readQueryTemplate( $groupName, $templateName )
     {
-		return @file_get_contents("{$_ENV['datahalt.config_dir']}/backends/{$this->backendId}/query-templates/{$groupName}/tmpl.{$templateName}.json");
+		return @file_get_contents("{$_ENV['datahalt.config_dir']}/backends/{$this->backendId}/query/{$groupName}/tmpl.{$templateName}.json");
 	}
 
     public function process ( $group, $action, $params )
