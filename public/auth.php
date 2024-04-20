@@ -1,13 +1,16 @@
 <?php
 include 'inc.header.php';
 
-$result = [
-	'status' => 'ok',
-	'data' => null,
-];
+$clientId = $_POST['clientId'] ?? null;
+$otp = $_POST['otp'] ?? null;
+
+$result = [];
+
+$servant = new \Taydh\Datahalt\Servant\EndpointServant();
 
 try {
-	$result['data'] = \Taydh\DataHalt\Helper\RequestHelper::authenticate();
+	$result['status'] = 'ok';
+	$result['data'] = $servant->authenticate($clientId, $otp);
 }
 catch(\Exception $exc) {
 	$result['status'] = 'fail';

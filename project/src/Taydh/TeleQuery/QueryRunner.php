@@ -189,8 +189,8 @@ class QueryRunner
 	    $filepath = $settings['path'];
 		
 		$whitelistVars = [
-			'projectDir' => $_ENV['project_dir'],
-			'dataDir' => $_ENV['data_dir'],
+			'projectDir' => $_ENV['datahalt.project_dir'],
+			'dataDir' => $_ENV['datahalt.data_dir'],
 		];
 		
 		foreach ($whitelistVars as $var => $val) {
@@ -264,6 +264,22 @@ class QueryRunner
 			}
 
 			self::runEntry($entry);
+
+			/* evaluate function call */
+			if (property_exists($entry, 'call')) {
+				$args['variables'] = &$this->variables;
+				$args['result'] = &$this->result;
+
+				$fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$entry->call}.php");
+				$isFnValid = $fnRealpath && strpos($fnRealpath, $_ENV['datahalt.function_dir']) === 0;
+
+				if (!$isFnValid) {
+					
+				}
+
+				$fn = include($fnRealpath);
+				$fn($args);
+			}
 		}
 	}
 	
@@ -271,7 +287,7 @@ class QueryRunner
 	{
 		if (!property_exists($entry, 'id') && !property_exists($entry, 'label')) return;
 
-		$isDatahaltActiveConn = get_class($this->activeConn) == \Taydh\TeleQuery\DatahaltConnector::class;
+		$isDatahaltActiveConn = $this->activeConn && get_class($this->activeConn) == \Taydh\TeleQuery\DatahaltConnector::class;
 		$mapTo = $entry->id ?? $entry->label;
 		$mapKeyCol = $entry->assocKey ?? null;
 		$queryType = $this->getEntryQueryType($entry);

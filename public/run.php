@@ -1,13 +1,17 @@
 <?php
 include 'inc.header.php';
 
+$backendId = $_GET['id'];
+$group = $_GET['group'];
+$action = $_GET['action'];
+$params = $_POST;
 $result = [];
 
-$servant = new \Taydh\Datahalt\Servant\EndpointServant();
+$servant = new \Taydh\Datahalt\Servant\BackendServant( $backendId );
 
 try {
 	$result['status'] = 'ok';
-	$result['data'] = $servant->process();
+	$result['data'] = $servant->process($group, $action, $params);
 }
 catch(\Exception $exc) {
 	$result['status'] = 'fail';

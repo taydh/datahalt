@@ -3,6 +3,7 @@ $do = $_GET['do'] ?? null;
 $endpointMap = [
     'auth' => './auth.php',
     'query' => './query.php',
+    'run' => '.run.php',
 ];
 
 if (array_key_exists($do, $endpointMap))

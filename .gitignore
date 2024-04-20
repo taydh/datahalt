@@ -1,5 +1,6 @@
 private/config-dev/
 private/data-dev/
+private/function-dev/
 project/vendor/
 test/
 public/other/
