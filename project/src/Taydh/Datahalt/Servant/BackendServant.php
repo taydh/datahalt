@@ -33,8 +33,6 @@ class BackendServant
 
     public function process ( $group, $action, $externalArgs )
     {
-        $queryTemplate = $this->readQueryTemplate($group, $action);
-        $queryObject = json_decode($queryTemplate);
         $sessionClaims = [];
 
         if ($this->extractSessionClaimsFunctionName) {
@@ -48,14 +46,12 @@ class BackendServant
             $fn = include($fnRealpath);
             $sessionClaims = $fn();
         }
-
-        /* 
-            important!
-            
-            sessionClaims must be merged after external parameters to avoid being replaced from external (variable injection)
-        */
         
-        $queryObject->variables = (object) array_merge($externalArgs, $sessionClaims);
+        $m = new \Mustache_Engine(array('entity_flags' => ENT_QUOTES));
+
+        $queryTemplate = $this->readQueryTemplate($group, $action);
+        $queryJson = $m->render($queryTemplate, ['arg' => $externalArgs, 'claim' => $sessionClaims]);
+        $queryObject = json_decode($queryJson);
 
         $clientSettings = EndpointServant::readClientSettings($this->clientId);
         $queryRunner = new \Taydh\TeleQuery\QueryRunner($clientSettings);
