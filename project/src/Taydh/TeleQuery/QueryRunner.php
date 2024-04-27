@@ -8,6 +8,9 @@ class QueryRunner
 	const FETCH_ALL = 1;
 	const FETCH_ONE = 2;
 	const EXEC = 3;
+	const CALL = 4;
+	const COMPOSE = 5;
+
 	const READ_FILE = 21;
 	const READ_DIR = 22;
 
@@ -17,7 +20,7 @@ class QueryRunner
 	private $clientSettings;
 	private $connPool;
 	private $activeConn;
-	private $paused;
+	private $skipped;
 	private $result;
 
 	private $variables;
@@ -73,7 +76,7 @@ class QueryRunner
 		else {
 			$queryType = $this->getEntryQueryType( $entry );
 
-			if ($queryType == self::FETCH_ONE || $queryType == self::EXEC) {
+			if ($queryType == self::FETCH_ONE || $queryType == self::EXEC ||  $queryType == self::CALL) {
 				$single = true;
 			}
 		}
@@ -91,6 +94,8 @@ class QueryRunner
 			'fetchAll' => self::FETCH_ALL,
 			'fetchOne' => self::FETCH_ONE,
 			'exec' => self::EXEC,
+			'call' => self::CALL,
+			'compose' => self::COMPOSE,
 			'readFile' => self::READ_FILE,
 			'readDir' => self::READ_DIR,
 		];
@@ -113,7 +118,7 @@ class QueryRunner
 	    $this->mainEntries = $query->entries;
 		$this->connPool = [];
 		$this->activeConn = null;
-		$this->paused = false;
+		$this->skipped = false;
 		$this->result = [];
 
 		// copy forerunner labels to result
@@ -124,39 +129,44 @@ class QueryRunner
 		// RUN MAIN QUERY
 		$this->runMainQuery();
 
-		// remove fields from result by blockFields parameter
-		foreach ($this->mainEntries as $entry) {
-			if (!property_exists($entry, 'blockFields')) continue;
-
-			$queryType = $this->getEntryQueryType($entry);
-
-			switch ($queryType) {
-				case self::FETCH_ALL:
-					foreach ($this->result[$entry->id ?? $entry->label] as &$r) {
-						foreach ($entry->blockFields as $field) {
-							if (array_key_exists($field, $r)) {
-								unset($r[$field]);
-							}
-						}
-					}
-					break;
-				case self::FETCH_ONE:
-					$r = &$this->result[$entry->id ??$entry->label];
-
-					if ($r) {
-						foreach ($entry->blockFields as $field) {
-							if (array_key_exists($field, $r)) {
-								unset($r[$field]);
-							}
-						}
-					}
-					break;
-			}
-		}
-
 		// remove forerunner labels from result
 		foreach ($this->forerunner as $entry) {
 			unset($this->result[$entry->label]);
+		}
+
+		foreach ($this->mainEntries as $entry) {
+			// remove blocked entry
+			if (property_exists($entry, 'blockLabel') && $entry->blockLabel) {
+				unset($this->result[$entry->label]);
+			}
+
+			// remove fields from result by blockFields parameter
+			if (property_exists($entry, 'blockFields')) {
+				$queryType = $this->getEntryQueryType($entry);
+
+				switch ($queryType) {
+					case self::FETCH_ALL:
+						foreach ($this->result[$entry->id ?? $entry->label] as &$r) {
+							foreach ($entry->blockFields as $field) {
+								if (array_key_exists($field, $r)) {
+									unset($r[$field]);
+								}
+							}
+						}
+						break;
+					case self::FETCH_ONE:
+						$r = &$this->result[$entry->id ??$entry->label];
+	
+						if ($r) {
+							foreach ($entry->blockFields as $field) {
+								if (array_key_exists($field, $r)) {
+									unset($r[$field]);
+								}
+							}
+						}
+						break;
+				}
+			}
 		}
 		
 		return $this->result;
@@ -223,12 +233,12 @@ class QueryRunner
 
 			if ($skipCount-- > 0) continue;
 
-			// determine if entry and after is paused
-			if (property_exists($entry, '_pause_')) {
-				$this->paused = $entry->_pause_;
+			// determine if entry and after is skipped
+			if (property_exists($entry, '_skipped_')) {
+				$this->skipped = $entry->_skip_;
 			}
 
-			if ($this->paused) continue;
+			if ($this->skipped) continue;
 
 			// determine which connection to use and after
 			if (property_exists($entry, '_connect_')) {
@@ -264,22 +274,6 @@ class QueryRunner
 			}
 
 			self::runEntry($entry);
-
-			/* evaluate function call */
-			if (property_exists($entry, 'call')) {
-				$args['variables'] = &$this->variables;
-				$args['result'] = &$this->result;
-
-				$fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$entry->call}.php");
-				$isFnValid = $fnRealpath && strpos($fnRealpath, $_ENV['datahalt.function_dir']) === 0;
-
-				if (!$isFnValid) {
-					
-				}
-
-				$fn = include($fnRealpath);
-				$fn($args);
-			}
 		}
 	}
 	
@@ -288,7 +282,7 @@ class QueryRunner
 		if (!property_exists($entry, 'id') && !property_exists($entry, 'label')) return;
 
 		$isDatahaltActiveConn = $this->activeConn && get_class($this->activeConn) == \Taydh\TeleQuery\DatahaltConnector::class;
-		$mapTo = $entry->id ?? $entry->label;
+		$mapTo = $entry->id ?? $entry->label ?? null;
 		$mapKeyCol = $entry->assocKey ?? null;
 		$queryType = $this->getEntryQueryType($entry);
 
@@ -296,14 +290,45 @@ class QueryRunner
 		case self::FETCH_ALL:
 			$items = !$isDatahaltActiveConn ? self::fetchAll($entry) : $this->activeConn->query($entry);
 			$this->result[$mapTo] = !$mapKeyCol ? $items : array_column($items, null, $mapKeyCol);
+
 			break;
 		case self::FETCH_ONE:
 			$item = !$isDatahaltActiveConn ? self::fetchOne($entry) : $this->activeConn->query($entry);
 			$this->result[$mapTo] = $item;
+
 			break;
 		case self::EXEC:
 			$item = !$isDatahaltActiveConn ? self::exec($entry) : $this->activeConn->query($entry);
 			$this->result[$mapTo] = $item;
+
+			break;
+		case self::COMPOSE:
+			if ($mapTo) {
+				$this->result[$mapTo] = $this->composeParameterArgs($entry->compose);
+			}
+
+			break;
+		case self::CALL:
+			$runner['activeConn'] = $this->activeConn;
+			$runner['variables'] = &$this->variables;
+			$runner['result'] = &$this->result;
+			$args = property_exists($entry, 'params')
+				? $this->composeParameterArgs($entry->params)
+				: [];
+
+			$fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$entry->call}.php");
+			$isFnValid = $fnRealpath && strpos($fnRealpath, $_ENV['datahalt.function_dir']) === 0;
+
+			if (!$isFnValid) {
+				
+			}
+
+			$fn = include($fnRealpath);
+
+			if ($mapTo) {
+				$this->result[$mapTo] = $fn($runner, $args);
+			}
+
 			break;
 		case self::READ_FILE:
 			$item = !$isDatahaltActiveConn 
@@ -316,6 +341,7 @@ class QueryRunner
 				? $this->activeConn->readDir($entry->readDir, $entry->props ?? [])
 				: $this->activeConn->query($entry);
 			$this->result[$mapTo] = $item;
+
 			break;
 		}
 	}
@@ -426,7 +452,7 @@ class QueryRunner
 			// determine values for parameter in array type
 			if ($from) {
 				$fromDimensionType = $this->getEntryDataDimension($from);
-				$referencedItems = $fromDimensionType == self::SINGLE
+				$referencedItems = ($fromDimensionType == self::SINGLE)
 					? ($this->result[$from] != null ? [$this->result[$from]] : [])
 					: $this->result[$from];
 
@@ -455,5 +481,63 @@ class QueryRunner
 
 		//print_r($queryText); print_r($allParamValues);
 		return [$queryText, $allParamValues];
+	}
+
+	private function composeParameterArgs ( $entryParams )
+	{
+		$args = [];
+
+		// convert to question marks statement template
+		foreach ($entryParams as $param) {
+			$type = $param->type ?? 'STR';
+			$validType = in_array($type, ['STR', 'NUM', 'INT', 'BOOL', 'NULL']);
+			$type = $validType ? $type : 'STR';
+			$pdoParamType = $type == 'INT'
+				? \PDO::PARAM_INT
+				: ($type == 'BOOL'
+					?  \PDO::PARAM_BOOL
+					: ($type == 'NULL'
+						? \PDO::PARAM_NULL
+						: \PDO::PARAM_STR));
+
+			$from = $param->from ?? null;
+			$var = $param->var ?? null;
+
+			// determine values for parameter in array type
+			if ($from) {
+				$fromDimensionType = $this->getEntryDataDimension($from);
+				$referencedItems = ($fromDimensionType == self::SINGLE)
+					? ($this->result[$from] != null ? [$this->result[$from]] : [])
+					: $this->result[$from];
+
+				// fail this parameters
+				if (count($referencedItems) == 0) return false;
+
+				$values = array_unique(array_column($referencedItems, $param->field));
+
+				$arg = [
+					$param->name => ($fromDimensionType == self::SINGLE) ? $values[0] : $values,
+				];
+			}
+			else if ($var) {
+				if (property_exists($this->variables, $var)) {
+					$arg = [
+						$param->name => $this->variables->$var
+					];
+				}
+				else { // fail this parameters
+					return false;
+				}
+			}
+			else if (property_exists($param, 'value')) {
+				$arg = [
+					$param->name = $param->value
+				];
+			}
+			
+			$args = array_merge($args, $arg);
+		}
+
+		return $args;
 	}
 }

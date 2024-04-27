@@ -2,21 +2,19 @@
 namespace Taydh\Datahalt\Servant;
 
 class BackendServant
-{
+{ 
     private $backendId;
     private $config;
     private $clientId;
     private $extractSessionClaimsFunctionName;
-    private $externalArgumentPrefix;
     private $sessionClaims;
 
-    public function __construct( $backendId )
+   public function __construct( $backendId )
     {
         $this->backendId = $backendId;
         $this->config = $this->readBackendConfig();
         $this->clientId = $this->config['clientId'];
         $this->extractSessionClaimsFunctionName = $this->config['function.extractSessionClaims'] ?? '';
-        $this->externalArgumentPrefix = $this->config['externalArgumentPrefix'] ?? '';
     }
 
     private function readBackendConfig ()
@@ -26,10 +24,8 @@ class BackendServant
 	
 	private function readQueryTemplate( $groupName, $templateName )
     {
-		return @file_get_contents("{$_ENV['datahalt.config_dir']}/backends/{$this->backendId}/query/{$groupName}/tmpl.{$templateName}.json");
+		return @file_get_contents("{$_ENV['datahalt.config_dir']}/backends/{$this->backendId}/query/{$groupName}/{$templateName}.json");
 	}
-
-    public function getExternalArgumentPrefix () { return $this->externalArgumentPrefix; }
 
     public function process ( $group, $action, $externalArgs )
     {
@@ -44,13 +40,18 @@ class BackendServant
             }
 
             $fn = include($fnRealpath);
-            $sessionClaims = $fn();
+            $backendProps = [
+                'backendId' => $this->backendId,
+                'config' => $this->config,
+                'clientId' => $this->clientId,
+            ];
+            $sessionClaims = $fn($backendProps);
         }
         
         $m = new \Mustache_Engine(array('entity_flags' => ENT_QUOTES));
 
         $queryTemplate = $this->readQueryTemplate($group, $action);
-        $queryJson = $m->render($queryTemplate, ['arg' => $externalArgs, 'claim' => $sessionClaims]);
+        $queryJson = $m->render($queryTemplate, ['args' => $externalArgs, 'claims' => $sessionClaims]);
         $queryObject = json_decode($queryJson);
 
         $clientSettings = EndpointServant::readClientSettings($this->clientId);
