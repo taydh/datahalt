@@ -1,0 +1,16 @@
+{
+    "variables": {
+      "satu": "{{arg.satu}}"
+    },
+    "entries": [
+      { "_connect_": "dev_sqlite" },
+      {
+        "label": "J1",
+        "fetchAll": "select * from journal"
+      },
+      {
+        "label": "T1",
+        "call": "app.sample/journal/test"
+      }
+    ]
+  }

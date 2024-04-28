@@ -1,0 +1,42 @@
+{
+    "variables": {
+        "username": "{{args.username}}",
+        "loginHash": "{{args.loginHash}}"
+    },
+    "entries":[
+        { 
+            "_connect_": "dev_sqlite_user",
+            "_block_": true
+        },
+        {
+            "label": "user",
+            "fetchOne": "SELECT auth_hash, id FROM user WHERE username=:username",
+            "params": [
+                { "name": "username", "var": "username" }
+            ]
+        },
+        {
+            "label": "validateAuthHash",
+            "call": "app.sample/general/validateAuthHash",
+            "params": [
+                { "name": "loginHash", "var": "loginHash" },
+                { "name": "userId", "from": "user", "field": "id" },
+                { "name": "authHash", "from": "user", "field": "auth_hash" }
+            ]
+        },
+        {
+            "label": "validateLogin",
+            "compose": [
+                { "name": "valid", "from": "validateAuthHash", "field": "valid" },
+                { "name": "userId", "from": "user", "field": "id" }
+            ]
+        },
+        {
+            "_block_": false
+        },
+        {
+            "label": "authentication-info",
+            "call": "app.sample/general/generateAuthenticationInfo" 
+        }
+    ]
+}

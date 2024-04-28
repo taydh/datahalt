@@ -117,7 +117,7 @@ class EndpointServant
 		}
 		
 		$clientSettings = self::readClientSettings($clientId);
-		$queryRunner = new \Taydh\TeleQuery\QueryRunner($clientSettings);
+		$queryRunner = new \Taydh\Telequery\QueryRunner($clientSettings);
 
 		return $queryRunner->run($queryObject);
 	}

@@ -6,7 +6,8 @@ class BackendServant
     private $backendId;
     private $config;
     private $clientId;
-    private $extractSessionClaimsFunctionName;
+    private $backendDir;
+    private $extractClaimsFunction;
     private $sessionClaims;
 
    public function __construct( $backendId )
@@ -14,25 +15,26 @@ class BackendServant
         $this->backendId = $backendId;
         $this->config = $this->readBackendConfig();
         $this->clientId = $this->config['clientId'];
-        $this->extractSessionClaimsFunctionName = $this->config['function.extractSessionClaims'] ?? '';
+        $this->backendDir = $this->config['backendDir'];
+        $this->extractClaimsFunction = $this->config['extractClaimsFunction'] ?? '';
     }
 
     private function readBackendConfig ()
     {
-		return parse_ini_file("{$_ENV['datahalt.config_dir']}/backends/{$this->backendId}/backend.ini");
+		return parse_ini_file("{$_ENV['datahalt.config_dir']}/backends/{$this->backendId}.ini");
 	}
 	
 	private function readQueryTemplate( $groupName, $templateName )
     {
-		return @file_get_contents("{$_ENV['datahalt.config_dir']}/backends/{$this->backendId}/query/{$groupName}/{$templateName}.json");
+		return @file_get_contents("{$this->backendDir}/{$groupName}/{$templateName}.json");
 	}
 
     public function process ( $group, $action, $externalArgs )
     {
         $sessionClaims = [];
 
-        if ($this->extractSessionClaimsFunctionName) {
-            $fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$this->extractSessionClaimsFunctionName}.php");
+        if ($this->extractClaimsFunction) {
+            $fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$this->extractClaimsFunction}.php");
             $isFnValid = $fnRealpath && strpos($fnRealpath, $_ENV['datahalt.function_dir']) === 0;
 
             if (!$isFnValid) {
@@ -40,14 +42,16 @@ class BackendServant
             }
 
             $fn = include($fnRealpath);
-            $backendProps = [
+            $backendArgs = [
                 'backendId' => $this->backendId,
                 'config' => $this->config,
                 'clientId' => $this->clientId,
+                'backendDir' => $this->backendDir,
+                'bearerToken' => \Taydh\Common::getBearerToken(),
             ];
-            $sessionClaims = $fn($backendProps);
+            $sessionClaims = $fn(null, $backendArgs);
         }
-        
+
         $m = new \Mustache_Engine(array('entity_flags' => ENT_QUOTES));
 
         $queryTemplate = $this->readQueryTemplate($group, $action);
@@ -55,8 +59,9 @@ class BackendServant
         $queryObject = json_decode($queryJson);
 
         $clientSettings = EndpointServant::readClientSettings($this->clientId);
-        $queryRunner = new \Taydh\TeleQuery\QueryRunner($clientSettings);
+        $queryRunner = new \Taydh\Telequery\QueryRunner($clientSettings);
+        $result = $queryRunner->run($queryObject);
 
-		return $queryRunner->run($queryObject);
+		return $result;
     }
 }

@@ -1,0 +1,43 @@
+{
+    "variables": {
+        "username": "{{args.username}}",
+        "loginHash": "{{args.loginHash}}"
+    },
+    "entries": [
+        { "_connect_": "dev_sqlite_user" },
+        {
+            "label": "addEmptyUser",
+            "exec": "INSERT INTO user (username) VALUES (:username)",
+            "params": [
+                { "name": "username", "var": "username" }
+            ],
+            "props": ["lastInsertId"],
+            "blockLabel": true
+        },
+        {
+            "label": "authHash",
+            "call": "app.sample/general/generateAuthHash",
+            "params": [
+                { "name": "userId", "from": "addEmptyUser", "field": "lastInsertId" },
+                { "name": "loginHash", "var": "loginHash" }
+            ],
+            "blockLabel": true
+        },
+        {
+            "label": "updateUserInfo",
+            "exec": "UPDATE user SET id=ROWID, auth_hash=:authHash WHERE ROWID=:userId",
+            "params": [
+                { "name": "authHash", "from": "authHash", "field": "authHash" },
+                { "name": "userId", "from": "addEmptyUser", "field": "lastInsertId" }
+            ],
+            "props": ["affectedRows"],
+            "blockLabel": true
+        },
+        {
+            "label": "userInfo",
+            "compose": [
+                { "name": "userId", "from": "addEmptyUser", "field": "lastInsertId" }
+            ]
+        }
+    ]
+}

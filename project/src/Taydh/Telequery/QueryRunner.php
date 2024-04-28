@@ -1,5 +1,5 @@
 <?php
-namespace Taydh\TeleQuery;
+namespace Taydh\Telequery;
 
 use stdClass;
 
@@ -21,6 +21,7 @@ class QueryRunner
 	private $connPool;
 	private $activeConn;
 	private $skipped;
+	private $blocked;
 	private $result;
 
 	private $variables;
@@ -119,6 +120,7 @@ class QueryRunner
 		$this->connPool = [];
 		$this->activeConn = null;
 		$this->skipped = false;
+		$this->blocked = false;
 		$this->result = [];
 
 		// copy forerunner labels to result
@@ -136,7 +138,7 @@ class QueryRunner
 
 		foreach ($this->mainEntries as $entry) {
 			// remove blocked entry
-			if (property_exists($entry, 'blockLabel') && $entry->blockLabel) {
+			if (property_exists($entry, 'label') && property_exists($entry, 'blockLabel') && $entry->blockLabel) {
 				unset($this->result[$entry->label]);
 			}
 
@@ -240,6 +242,15 @@ class QueryRunner
 
 			if ($this->skipped) continue;
 
+			// determine if entry label will be blocked from result
+			if (property_exists($entry, '_block_')) {
+				$this->blocked = $entry->_block_;
+			}
+
+			 if(!property_exists($entry, 'blockLabel')) {
+			 	$entry->blockLabel = $this->blocked;
+			 }
+
 			// determine which connection to use and after
 			if (property_exists($entry, '_connect_')) {
 				if (array_key_exists($entry->_connect_, $this->connPool)) {
@@ -279,12 +290,14 @@ class QueryRunner
 	
 	private function runEntry($entry)
 	{
-		if (!property_exists($entry, 'id') && !property_exists($entry, 'label')) return;
+		$queryType = $this->getEntryQueryType($entry);
+		$labelExists = property_exists($entry, 'id') || property_exists($entry, 'label');
+
+		if (!$labelExists && !in_array($queryType, [self::EXEC, self::CALL])) return;
 
 		$isDatahaltActiveConn = $this->activeConn && get_class($this->activeConn) == \Taydh\TeleQuery\DatahaltConnector::class;
 		$mapTo = $entry->id ?? $entry->label ?? null;
 		$mapKeyCol = $entry->assocKey ?? null;
-		$queryType = $this->getEntryQueryType($entry);
 
 		switch ($queryType) {
 		case self::FETCH_ALL:
@@ -299,7 +312,10 @@ class QueryRunner
 			break;
 		case self::EXEC:
 			$item = !$isDatahaltActiveConn ? self::exec($entry) : $this->activeConn->query($entry);
-			$this->result[$mapTo] = $item;
+
+			if ($mapTo) {
+				$this->result[$mapTo] = $item;
+			}
 
 			break;
 		case self::COMPOSE:
@@ -309,9 +325,12 @@ class QueryRunner
 
 			break;
 		case self::CALL:
-			$runner['activeConn'] = $this->activeConn;
-			$runner['variables'] = &$this->variables;
-			$runner['result'] = &$this->result;
+			$runner = (object) [
+				'activeConn' => $this->activeConn,
+				'variables' => &$this->variables,
+				'result' => &$this->result,
+				// 'bearerToken' => Common::getBearerToken(),
+			];
 			$args = property_exists($entry, 'params')
 				? $this->composeParameterArgs($entry->params)
 				: [];
@@ -324,9 +343,10 @@ class QueryRunner
 			}
 
 			$fn = include($fnRealpath);
+			$result = $fn($runner, $args);
 
 			if ($mapTo) {
-				$this->result[$mapTo] = $fn($runner, $args);
+				$this->result[$mapTo] = $result;
 			}
 
 			break;

@@ -1,5 +1,5 @@
 <?php
-namespace Taydh\TeleQuery;
+namespace Taydh\Telequery;
 
 class PDOConnector
 {
