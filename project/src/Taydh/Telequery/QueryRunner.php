@@ -343,7 +343,7 @@ class QueryRunner
 			}
 
 			$fn = include($fnRealpath);
-			$result = $fn($runner, $args);
+			$result = $fn($args, $runner);
 
 			if ($mapTo) {
 				$this->result[$mapTo] = $result;
@@ -551,7 +551,7 @@ class QueryRunner
 			}
 			else if (property_exists($param, 'value')) {
 				$arg = [
-					$param->name = $param->value
+					$param->name => $param->value
 				];
 			}
 			

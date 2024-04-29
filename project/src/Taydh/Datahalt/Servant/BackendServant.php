@@ -15,8 +15,12 @@ class BackendServant
         $this->backendId = $backendId;
         $this->config = $this->readBackendConfig();
         $this->clientId = $this->config['clientId'];
-        $this->backendDir = $this->config['backendDir'];
+        $this->backendDir = realpath($this->config['backendDir']);
         $this->extractClaimsFunction = $this->config['extractClaimsFunction'] ?? '';
+
+        if (!$this->backendDir) {
+            throw new \Exception('Backend directory not found:' . $this->config['backendDir']);
+        }
     }
 
     private function readBackendConfig ()
@@ -35,10 +39,10 @@ class BackendServant
 
         if ($this->extractClaimsFunction) {
             $fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$this->extractClaimsFunction}.php");
-            $isFnValid = $fnRealpath && strpos($fnRealpath, $_ENV['datahalt.function_dir']) === 0;
+            $isFnValid = $fnRealpath && strpos($fnRealpath, realpath($_ENV['datahalt.function_dir'])) === 0;
 
             if (!$isFnValid) {
-
+                throw new \Exception('Function not found: ' . $this->extractClaimsFunction);
             }
 
             $fn = include($fnRealpath);
@@ -49,7 +53,7 @@ class BackendServant
                 'backendDir' => $this->backendDir,
                 'bearerToken' => \Taydh\Common::getBearerToken(),
             ];
-            $sessionClaims = $fn(null, $backendArgs);
+            $sessionClaims = $fn($backendArgs);
         }
 
         $m = new \Mustache_Engine(array('entity_flags' => ENT_QUOTES));
