@@ -77,7 +77,7 @@ class QueryRunner
 		else {
 			$queryType = $this->getEntryQueryType( $entry );
 
-			if ($queryType == self::FETCH_ONE || $queryType == self::EXEC ||  $queryType == self::CALL) {
+			if (in_array($queryType, [self::FETCH_ONE, self::EXEC, self::CALL, self::READ_FILE])) {
 				$single = true;
 			}
 		}
