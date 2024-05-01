@@ -39,7 +39,7 @@ class FileSystemConnector
         foreach ($options as $opt) {
             if ($opt == 'size') $item[$opt] = filesize($filepath);
             if ($opt == 'text') $item[$opt] = file_get_contents($filepath);
-            if ($opt == 'content') $item[$opt] = base64_encode(file_get_contents($filepath));
+            if ($opt == 'contents') $item[$opt] = base64_encode(file_get_contents($filepath));
             if ($opt == 'fullpath') $item[$opt] = $filepath;
         }
 
