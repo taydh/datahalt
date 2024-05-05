@@ -56,7 +56,7 @@ class BackendServant
             $sessionClaims = $fn($backendArgs);
         }
 
-        $queryTemplate = $this->readQueryTemplate($group, $action);
+        $queryJson = $this->readQueryTemplate($group, $action);
         $queryObject = json_decode($queryJson);
 
         $source = [];
