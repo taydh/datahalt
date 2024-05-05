@@ -566,7 +566,7 @@ class QueryRunner
 			$allParamValues = array_merge($allParamValues, $paramValues);
 		}
 
-		print_r($queryText); print_r($allParamValues);
+		//print_r($queryText); print_r($allParamValues);
 		return [$queryText, $allParamValues];
 	}
 
