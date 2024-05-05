@@ -494,9 +494,11 @@ class QueryRunner
 				$paramValues = is_array($param->value) ? $param->value : [$param->value];
 			}
 			
-			$marks = str_repeat('?,', count($paramValues) - 1) . '?';
-			$queryText = str_replace(':'.$param->name, $marks, $queryText);
+			//$marks = str_repeat('?,', count($paramValues) - 1) . '?';
+			//$queryText = str_replace(':'.$param->name, $marks, $queryText);
+			
 			$allParamValues = array_merge($allParamValues, $paramValues);
+
 		}
 
 		//print_r($queryText); print_r($allParamValues);
