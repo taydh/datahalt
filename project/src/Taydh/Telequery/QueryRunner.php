@@ -545,7 +545,7 @@ class QueryRunner
 				$paramValues = is_array($param->value) ? $param->value : [$name => $param->value];
 			}
 
-			if (is_array($paramValues) && ($c = count($paramValues) > 0)) {
+			if (is_array($paramValues) && ($c = count($paramValues)) > 0) {
 				$expanders = '';
 
 				for ($i=0; $i<$c; $i++) {
