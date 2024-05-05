@@ -505,7 +505,7 @@ class QueryRunner
 		foreach ($entryParams as $param) {
 			$name = $param->name;
 			$type = $param->type ?? 'STR';
-			$validType = in_array($type, ['STR', 'NUM', 'INT', 'BOOL', 'NULL']);
+			$validType = in_array($type, ['STR', 'NUM', 'INT', 'BOOL', 'NULL', 'ARR']);
 			$type = $validType ? $type : 'STR';
 			$pdoParamType = $type == 'INT'
 				? \PDO::PARAM_INT
@@ -533,7 +533,9 @@ class QueryRunner
 			else if ($var) {
 				if (property_exists($this->variables, $var)) {
 					$val = $this->variables->$var;
-					$paramValues = is_array($val) ? $val : [$name => $val];
+
+					if ($type == 'ARR' && !is_array($val)) $paramValues = [];
+					else $paramValues = is_array($val) ? $val : [$name => $val];
 				}
 				else { // fail this parameters
 					return [false, false];
@@ -542,8 +544,8 @@ class QueryRunner
 			else if (property_exists($param, 'value')) {
 				$paramValues = is_array($param->value) ? $param->value : [$name => $param->value];
 			}
-			
-			if (is_array($paramValues) && ($c = count($paramValues)) > 0) {
+
+			if (is_array($paramValues) && ($c = count($paramValues) > 0)) {
 				$expanders = '';
 
 				for ($i=0; $i<$c; $i++) {
@@ -564,7 +566,7 @@ class QueryRunner
 			$allParamValues = array_merge($allParamValues, $paramValues);
 		}
 
-		//print_r($queryText); print_r($allParamValues);
+		print_r($queryText); print_r($allParamValues);
 		return [$queryText, $allParamValues];
 	}
 
