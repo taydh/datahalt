@@ -20,6 +20,8 @@ class QueryRunner
 	private $clientSettings;
 	private $connPool;
 	private $activeConn;
+	private $source;
+
 	private $skipped;
 	private $blocked;
 	private $result;
@@ -31,6 +33,45 @@ class QueryRunner
 	public function __construct($clientSettings)
 	{
 		$this->clientSettings = $clientSettings;
+	}
+
+	private static function validateVariableValues ( $variables, $acceptArray=true )
+	{
+		foreach ($variables as $key => $value) {
+			$valid = true;
+
+			if (is_array($value)) {
+				$valid = $acceptArray;
+				
+				if ($valid) {
+					self::validateVariableValues($value, false);
+				}
+			}
+			else {
+				$valid = !is_object($value); 
+			}
+
+			if (!$valid) throw new \Exception("Invalid variable value for $key");
+		}
+	}
+
+	private function resolveVariables () {
+		foreach ($this->variables as $key => $value) {
+			$resolvedValue = $value;
+
+			if (is_object($value)) {
+				if (property_exists($value, 'src') && array_key_exists($value->src, $this->source)) {
+					$resolvedValue = $this->source[$value->src];
+				} else if (property_exists($value, 'default')) {
+					$resolvedValue = $value->default;
+				}
+			}
+
+			// double check
+			self::validateVariableValues([$resolvedValue]);
+
+			$this->variables->$key = $resolvedValue;
+		}
 	}
 
 	private static function isKeyExists($var, $key)
@@ -113,7 +154,7 @@ class QueryRunner
 		return $result;
 	}
 
-	public function run($query) {
+	public function run($query, $source=[]) {
 		$this->variables = $query->variables ?? [];
 		$this->forerunner = $query->forerunner ?? [];
 	    $this->mainEntries = $query->entries;
@@ -121,7 +162,12 @@ class QueryRunner
 		$this->activeConn = null;
 		$this->skipped = false;
 		$this->blocked = false;
+		$this->source = $source;
 		$this->result = [];
+
+		// validate source values
+		self::validateVariableValues($this->source);
+		$this->resolveVariables();
 
 		// copy forerunner labels to result
 		foreach ($this->forerunner as $entry) {
@@ -455,6 +501,7 @@ class QueryRunner
 
 		// convert to question marks statement template
 		foreach ($entryParams as $param) {
+			$name = $param->name;
 			$type = $param->type ?? 'STR';
 			$validType = in_array($type, ['STR', 'NUM', 'INT', 'BOOL', 'NULL']);
 			$type = $validType ? $type : 'STR';
@@ -483,22 +530,21 @@ class QueryRunner
 			}
 			else if ($var) {
 				if (property_exists($this->variables, $var)) {
-					$variable = $this->variables->$var;
-					$paramValues = is_array($variable) ? $variable : [$variable];
+					$val = $this->variables->$var;
+					$paramValues = is_array($val) ? $val : [$name => $val];
 				}
 				else { // fail this parameters
 					return [false, false];
 				}
 			}
 			else if (property_exists($param, 'value')) {
-				$paramValues = is_array($param->value) ? $param->value : [$param->value];
+				$paramValues = is_array($param->value) ? $param->value : [$name => $param->value];
 			}
 			
 			//$marks = str_repeat('?,', count($paramValues) - 1) . '?';
 			//$queryText = str_replace(':'.$param->name, $marks, $queryText);
 			
 			$allParamValues = array_merge($allParamValues, $paramValues);
-
 		}
 
 		//print_r($queryText); print_r($allParamValues);

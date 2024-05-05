@@ -62,9 +62,13 @@ class BackendServant
         $queryJson = $m->render($queryTemplate, ['args' => $externalArgs, 'claims' => $sessionClaims]);
         $queryObject = json_decode($queryJson);
 
+        $source = [];
+        foreach ($externalArgs as $key => $val) $source["arg.$key"] = $val;
+        foreach ($sessionClaims as $key => $val) $source["claim.$key"] = $val;
+
         $clientSettings = EndpointServant::readClientSettings($this->clientId);
         $queryRunner = new \Taydh\Telequery\QueryRunner($clientSettings);
-        $result = $queryRunner->run($queryObject);
+        $result = $queryRunner->run($queryObject, $source);
 
 		return $result;
     }
