@@ -543,8 +543,23 @@ class QueryRunner
 				$paramValues = is_array($param->value) ? $param->value : [$name => $param->value];
 			}
 			
-			//$marks = str_repeat('?,', count($paramValues) - 1) . '?';
-			//$queryText = str_replace(':'.$param->name, $marks, $queryText);
+			if (is_array($paramValues) && ($c = count($paramValues)) > 1) {
+				$expanders = '';
+
+				for ($i=0; $i<$c; $i++) {
+					$expanders .= ':'.$name.$i.',';
+				}
+
+				$expanders = rtrim($expanders, ',');
+				$paramValues2 = $paramValues;
+				$paramValues = [];
+
+				for ($i=0; $i<$c; $i++) {
+					$paramValues[':'.$name.$i] = $paramValues2[$i];
+				}
+			
+				$queryText = str_replace('{$'.$name.'}', $expanders, $queryText);
+			}
 			
 			$allParamValues = array_merge($allParamValues, $paramValues);
 		}
