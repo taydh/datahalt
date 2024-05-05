@@ -38,7 +38,7 @@ class BackendServant
         $sessionClaims = [];
 
         if ($this->extractClaimsFunction) {
-            $fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$this->extractClaimsFunction}.php");
+            $fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$this->extractClaimsFunction}.fn.php");
             $isFnValid = $fnRealpath && strpos($fnRealpath, realpath($_ENV['datahalt.function_dir'])) === 0;
 
             if (!$isFnValid) {

@@ -383,7 +383,7 @@ class QueryRunner
 				? $this->composeParameterArgs($entry->params)
 				: [];
 
-			$fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$entry->call}.php");
+			$fnRealpath = realpath("{$_ENV['datahalt.function_dir']}/{$entry->call}.fn.php");
 			$isFnValid = $fnRealpath && strpos($fnRealpath, $_ENV['datahalt.function_dir']) === 0;
 
 			if (!$isFnValid) {
