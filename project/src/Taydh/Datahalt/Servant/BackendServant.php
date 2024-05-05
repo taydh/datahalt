@@ -56,10 +56,7 @@ class BackendServant
             $sessionClaims = $fn($backendArgs);
         }
 
-        $m = new \Mustache_Engine(array('entity_flags' => ENT_QUOTES));
-
         $queryTemplate = $this->readQueryTemplate($group, $action);
-        $queryJson = $m->render($queryTemplate, ['args' => $externalArgs, 'claims' => $sessionClaims]);
         $queryObject = json_decode($queryJson);
 
         $source = [];

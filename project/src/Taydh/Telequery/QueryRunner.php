@@ -64,6 +64,8 @@ class QueryRunner
 					$resolvedValue = $this->source[$value->src];
 				} else if (property_exists($value, 'default')) {
 					$resolvedValue = $value->default;
+				} else {
+					$resolvedValue = null;
 				}
 			}
 
