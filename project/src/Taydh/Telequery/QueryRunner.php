@@ -522,13 +522,18 @@ class QueryRunner
 			if ($from) {
 				$fromDimensionType = $this->getEntryDataDimension($from);
 				$referencedItems = ($fromDimensionType == self::SINGLE)
-					? ($this->result[$from] != null ? [$name => $this->result[$from]] : [])
+					? ($this->result[$from] != null ? [$this->result[$from]] : [])
 					: $this->result[$from];
 
 				// fail this parameters
 				if (count($referencedItems) == 0) return [false, false];
 
-				$paramValues = array_unique(array_column($referencedItems, $param->field));
+				$fieldValues = array_unique(array_column($referencedItems, $param->field));
+				$paramValues = [];
+
+				foreach ($fieldValues as $val) {
+					$paramValues[$name] = $val;
+				}
 			}
 			else if ($var) {
 				if (property_exists($this->variables, $var)) {
@@ -544,6 +549,8 @@ class QueryRunner
 			else if (property_exists($param, 'value')) {
 				$paramValues = is_array($param->value) ? $param->value : [$name => $param->value];
 			}
+
+			//print_r($paramValues);
 
 			foreach ($paramValues as $paramName => $value) {
 				if (($c = count($paramValues)) > 0 && strpos($queryText, '{$'.$name.'}') !== false) {
@@ -570,7 +577,7 @@ class QueryRunner
 			$allParamValues = array_merge($allParamValues, $paramValues);
 		}
 
-		//print_r($queryText); print_r($allParamValues); die();
+		//print_r($queryText); print_r($allParamValues);
 		return [$queryText, $allParamValues];
 	}
 
