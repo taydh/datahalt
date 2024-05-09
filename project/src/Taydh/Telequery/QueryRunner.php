@@ -522,7 +522,7 @@ class QueryRunner
 			if ($from) {
 				$fromDimensionType = $this->getEntryDataDimension($from);
 				$referencedItems = ($fromDimensionType == self::SINGLE)
-					? ($this->result[$from] != null ? [$this->result[$from]] : [])
+					? ($this->result[$from] != null ? [$name => $this->result[$from]] : [])
 					: $this->result[$from];
 
 				// fail this parameters
@@ -545,28 +545,32 @@ class QueryRunner
 				$paramValues = is_array($param->value) ? $param->value : [$name => $param->value];
 			}
 
-			if (is_array($paramValues) && ($c = count($paramValues)) > 0) {
-				$expanders = '';
+			foreach ($paramValues as $paramName => $value) {
+				if (($c = count($paramValues)) > 0 && strpos($queryText, '{$'.$name.'}') !== false) {
+					$expander = '';
 
-				for ($i=0; $i<$c; $i++) {
-					$expanders .= ':'.$name.$i.',';
+					for ($i=0; $i<$c; $i++) {
+						$expander .= ':'.$name.$i.',';
+					}
+
+					$expander = rtrim($expander, ',');
+					$paramValues2 = $paramValues;
+					$paramValues = [];
+
+					//var_dump($paramValues2);
+
+					for ($i=0; $i<$c; $i++) {
+						$paramValues[':'.$name.$i] = $paramValues2[$i];
+					}
+
+					$queryText = str_replace('{$'.$name.'}', $expander, $queryText);
 				}
-
-				$expanders = rtrim($expanders, ',');
-				$paramValues2 = $paramValues;
-				$paramValues = [];
-
-				for ($i=0; $i<$c; $i++) {
-					$paramValues[':'.$name.$i] = $paramValues2[$i];
-				}
-			
-				$queryText = str_replace('{$'.$name.'}', $expanders, $queryText);
 			}
-			
+
 			$allParamValues = array_merge($allParamValues, $paramValues);
 		}
 
-		//print_r($queryText); print_r($allParamValues);
+		//print_r($queryText); print_r($allParamValues); die();
 		return [$queryText, $allParamValues];
 	}
 
