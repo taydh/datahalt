@@ -26,6 +26,7 @@ class QueryRunner
 	private $blocked;
 	private $result;
 
+	private $templates;
 	private $variables;
 	private $forerunner;
 	private $mainEntries;
@@ -157,6 +158,7 @@ class QueryRunner
 	}
 
 	public function run($query, $source=[]) {
+		$this->templates = $query->templates ?? [];
 		$this->variables = $query->variables ?? [];
 		$this->forerunner = $query->forerunner ?? [];
 	    $this->mainEntries = $query->entries;
@@ -190,10 +192,14 @@ class QueryRunner
 				unset($this->result[$entry->label]);
 			}
 
+			if (property_exists($entry, 'label') && !array_key_exists($entry->label, $this->result)) {
+				continue;
+			}
+
 			// remove fields from result by blockFields parameter
 			if (property_exists($entry, 'blockFields')) {
 				$queryType = $this->getEntryQueryType($entry);
-
+				//print_r($this->result);
 				switch ($queryType) {
 					case self::FETCH_ALL:
 						foreach ($this->result[$entry->id ?? $entry->label] as &$r) {
@@ -424,7 +430,9 @@ class QueryRunner
 		if (property_exists($entry, 'params')) {
 			list($queryText, $allParamValues) = $this->composeParameterValues($queryText, $entry->params);
 		}
-		
+
+		$queryText = $this->renderQueryTemplates($queryText);
+
 		if ($queryText) {
 			$stm = $this->activeConn->prepare($queryText);
 			$stm->execute($allParamValues);
@@ -445,6 +453,8 @@ class QueryRunner
 		if (property_exists($entry, 'params')) {
 			list($queryText, $allParamValues) = $this->composeParameterValues($queryText, $entry->params);
 		}
+
+		$queryText = $this->renderQueryTemplates($queryText);
 		
 		if ($queryText) {
 			$stm = $this->activeConn->prepare($queryText);
@@ -466,6 +476,8 @@ class QueryRunner
 		if (property_exists($entry, 'params')) {
 			list($queryText, $allParamValues) = $this->composeParameterValues($queryText, $entry->params);
 		}
+
+		$queryText = $this->renderQueryTemplates($queryText);
 
 		// block update or delete without condition (where)
 		if ($queryText) {
@@ -497,11 +509,21 @@ class QueryRunner
 		return $row === false ? null : $row;
 	}
 
+	private function renderQueryTemplates ( $queryText )
+	{
+		$rendered = $queryText;
+
+		foreach ((array) $this->templates as $name => $value) {
+			$rendered = str_replace('{$'.$name.'}', $value, $rendered);
+		}
+
+		return $rendered;
+	}
+
 	private function composeParameterValues ( $queryText, $entryParams )
 	{
 		$allParamValues = [];
 
-		// convert to question marks statement template
 		foreach ($entryParams as $param) {
 			$name = $param->name;
 			$type = $param->type ?? 'STR';
@@ -525,10 +547,16 @@ class QueryRunner
 					? ($this->result[$from] != null ? [$this->result[$from]] : [])
 					: $this->result[$from];
 
-				// fail this parameters
+				/*  fail this parameters if no referencedItems */
+
 				if (count($referencedItems) == 0) return [false, false];
 
+				/* otherwise */
+
 				$fieldValues = array_unique(array_column($referencedItems, $param->field));
+
+				/* populate paramValues array with key = name */
+
 				$paramValues = [];
 
 				foreach ($fieldValues as $val) {
@@ -552,8 +580,16 @@ class QueryRunner
 
 			//print_r($paramValues);
 
+			/*  fail all parameters if required property exists and this empty */
+
+			if (property_exists($param, 'required') && $param->required && empty($paramValues)) {
+				return [false, false];
+			}
+
+			/* otherwise */
+
 			foreach ($paramValues as $paramName => $value) {
-				if (($c = count($paramValues)) > 0 && strpos($queryText, '{$'.$name.'}') !== false) {
+				if (($c = count($paramValues)) > 0 && strpos($queryText, '{:'.$name.'}') !== false) {
 					$expander = '';
 
 					for ($i=0; $i<$c; $i++) {
@@ -570,7 +606,7 @@ class QueryRunner
 						$paramValues[':'.$name.$i] = $paramValues2[$i];
 					}
 
-					$queryText = str_replace('{$'.$name.'}', $expander, $queryText);
+					$queryText = str_replace('{:'.$name.'}', $expander, $queryText);
 				}
 			}
 
