@@ -36,6 +36,15 @@ class QueryRunner
 		$this->clientSettings = $clientSettings;
 	}
 
+	private static function validateTemplateValues ( $templates )
+	{
+		foreach ($templates as $key => $value) {
+			$valid = is_string($value);
+
+			if (!$valid) throw new \Exception("Invalid template value for $key");
+		}
+	}
+
 	private static function validateVariableValues ( $variables, $acceptArray=true )
 	{
 		foreach ($variables as $key => $value) {
@@ -56,13 +65,13 @@ class QueryRunner
 		}
 	}
 
-	private function resolveVariables () {
-		foreach ($this->variables as $key => $value) {
+	private static function resolveSourcedValues ( $target, $source ) {
+		foreach ($target as $key => $value) {
 			$resolvedValue = $value;
 
 			if (is_object($value)) {
-				if (property_exists($value, 'src') && array_key_exists($value->src, $this->source)) {
-					$resolvedValue = $this->source[$value->src];
+				if (property_exists($value, 'src') && array_key_exists($value->src, $source)) {
+					$resolvedValue = $source[$value->src];
 				} else if (property_exists($value, 'default')) {
 					$resolvedValue = $value->default;
 				} else {
@@ -70,10 +79,7 @@ class QueryRunner
 				}
 			}
 
-			// double check
-			self::validateVariableValues([$resolvedValue]);
-
-			$this->variables->$key = $resolvedValue;
+			$target->$key = $resolvedValue;
 		}
 	}
 
@@ -158,8 +164,8 @@ class QueryRunner
 	}
 
 	public function run($query, $source=[]) {
-		$this->templates = $query->templates ?? [];
-		$this->variables = $query->variables ?? [];
+		$this->templates = $query->templates ?? (object) [];
+		$this->variables = $query->variables ?? (object) [];
 		$this->forerunner = $query->forerunner ?? [];
 	    $this->mainEntries = $query->entries;
 		$this->connPool = [];
@@ -169,9 +175,12 @@ class QueryRunner
 		$this->source = $source;
 		$this->result = [];
 
-		// validate source values
-		self::validateVariableValues($this->source);
-		$this->resolveVariables();
+		// resolve and validate variables values
+		$this->resolveSourcedValues($this->variables, $this->source);
+		self::validateVariableValues($this->variables);
+
+		$this->resolveSourcedValues($this->templates, $this->source);
+		self::validateTemplateValues($this->templates);
 
 		// copy forerunner labels to result
 		foreach ($this->forerunner as $entry) {
@@ -512,8 +521,14 @@ class QueryRunner
 	private function renderQueryTemplates ( $queryText )
 	{
 		$rendered = $queryText;
+		$templates = (array) $this->templates;
 
-		foreach ((array) $this->templates as $name => $value) {
+		foreach ($templates as $name => $value) {
+			// resolve template value if json object
+			if (is_object($value)) {
+				
+			}
+
 			$rendered = str_replace('{$'.$name.'}', $value, $rendered);
 		}
 
