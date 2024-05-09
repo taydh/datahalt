@@ -10,7 +10,7 @@ class BackendServant
 	private $extractClaimsFunction;
 	private $sessionClaims;
 
-   public function __construct( $backendId )
+	public function __construct( $backendId )
 	{
 		$this->backendId = $backendId;
 		$this->config = $this->readBackendConfig();
@@ -66,6 +66,9 @@ class BackendServant
 		$source = [];
 		foreach ($externalArgs as $key => $val) $source["arg.$key"] = $val;
 		foreach ($sessionClaims as $key => $val) $source["claim.$key"] = $val;
+
+		if (array_key_exists('var', $this->config))
+		{ foreach ($this->config['var'] as $key => $val) $source["var.$key"] = $val; }
 
 		$clientSettings = EndpointServant::readClientSettings($this->clientId);
 		$queryRunner = new \Taydh\Telequery\QueryRunner($clientSettings);
